@@ -11,6 +11,7 @@ export interface AcpClientOptions {
   agentName: string;
   domain: string;
   seedPassword?: string;
+  agentMdPath?: string;  // agent.md 文件路径，登录后自动上传
   onMessage: (sender: string, sessionId: string, identifyingCode: string, content: string) => void;
   onStatusChange?: (status: ConnectionStatus) => void;
   onError?: (error: Error) => void;
@@ -43,6 +44,12 @@ export class AcpClient {
     try {
       // 1. 初始化 AgentCP
       const acp = this.manager.initACP(this.options.domain, this.options.seedPassword || "");
+
+      // 1.5 设置 agent.md 路径（如果配置了），登录后自动上传
+      if (this.options.agentMdPath) {
+        console.log(`[ACP-TS] Setting agent.md path: ${this.options.agentMdPath}`);
+        acp.setAgentMdPath(this.options.agentMdPath);
+      }
 
       // 2. 先尝试加载已有 AID，如果不存在再创建
       let loadedAid = await acp.loadAid(this.aid);
@@ -302,5 +309,52 @@ export class AcpClient {
 
   get fullAid(): string {
     return this.aid;
+  }
+
+  /**
+   * 上传 agent.md 内容
+   * @param content agent.md 文件内容
+   * @returns 上传结果
+   */
+  async uploadAgentMd(content: string): Promise<{ success: boolean; url?: string; error?: string }> {
+    try {
+      const fs = this.manager.fs();
+      if (!fs) {
+        return { success: false, error: "FileSync not initialized" };
+      }
+      return await fs.uploadAgentMd(content);
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 从文件上传 agent.md
+   * @param filePath 本地文件路径
+   * @returns 上传结果
+   */
+  async uploadAgentMdFromFile(filePath: string): Promise<{ success: boolean; url?: string; error?: string }> {
+    try {
+      const fs = this.manager.fs();
+      if (!fs) {
+        return { success: false, error: "FileSync not initialized" };
+      }
+      return await fs.uploadAgentMdFromFile(filePath);
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 重置 agent.md 上传状态，下次登录时会重新上传
+   */
+  async resetAgentMdUploadStatus(): Promise<void> {
+    try {
+      const acp = this.manager.acp();
+      await acp.resetAgentMdUploadStatus();
+      console.log("[ACP-TS] Agent.md upload status reset");
+    } catch (error) {
+      console.error("[ACP-TS] Failed to reset agent.md upload status:", error);
+    }
   }
 }

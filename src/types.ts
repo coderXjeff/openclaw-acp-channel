@@ -6,6 +6,7 @@ export interface AcpChannelConfig {
   seedPassword?: string;    // 种子密码
   ownerAid?: string;        // 主人的 AID
   allowFrom?: string[];     // 允许接收消息的 AID 列表
+  agentMdPath?: string;     // agent.md 文件路径，登录后自动上传
   profile?: {
     displayName?: string;
     description?: string;

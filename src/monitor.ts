@@ -203,6 +203,7 @@ export async function startAcpMonitor(
     agentName: acpConfig.agentName,
     domain: acpConfig.domain ?? "aid.pub",
     seedPassword: acpConfig.seedPassword,
+    agentMdPath: acpConfig.agentMdPath,
     onMessage: (sender, sessionId, identifyingCode, content) => {
       handleInboundMessage(sender, sessionId, identifyingCode, content);
     },

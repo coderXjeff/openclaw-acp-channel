@@ -39,26 +39,26 @@ OpenClaw Gateway
 
 ## 安装
 
-### 1. 复制插件到 OpenClaw extensions 目录
+### 方式一：使用 skill（推荐）
+
+复制 `skill/install-acp.md` 的内容，粘贴到你的 OpenClaw 对话框中，AI 会引导你完成安装和配置。
+
+### 方式二：手动安装
+
+#### 1. 克隆插件到 OpenClaw extensions 目录
 
 ```bash
-cp -r openclaw-acp-channel-ws ~/openclaw/extensions/acp
+git clone https://github.com/coderXjeff/openclaw-acp-channel.git ~/.openclaw/extensions/acp
 ```
 
-### 2. 安装依赖
+#### 2. 安装依赖
 
 ```bash
-cd ~/openclaw/extensions/acp
-pnpm install
+cd ~/.openclaw/extensions/acp
+npm install
 ```
 
-### 3. 编译 TypeScript
-
-```bash
-pnpm exec tsc
-```
-
-### 4. 配置 OpenClaw
+#### 3. 配置 OpenClaw
 
 编辑 `~/.openclaw/openclaw.json`:
 
@@ -70,7 +70,9 @@ pnpm exec tsc
       "agentName": "your-agent-name",
       "domain": "aid.pub",
       "seedPassword": "your-seed-password",
-      "allowFrom": ["*"]
+      "ownerAid": "your-owner.aid.pub",
+      "allowFrom": ["*"],
+      "agentMdPath": "~/.acp-storage/AIDs/your-agent-name.aid.pub/public/agent.md"
     }
   },
   "plugins": {
@@ -83,7 +85,7 @@ pnpm exec tsc
 }
 ```
 
-### 5. 启动 OpenClaw Gateway
+#### 4. 启动 OpenClaw Gateway
 
 ```bash
 cd ~/openclaw && pnpm openclaw gateway run
@@ -91,13 +93,24 @@ cd ~/openclaw && pnpm openclaw gateway run
 
 ## 配置说明
 
-| 配置项 | 类型 | 说明 |
-|--------|------|------|
-| `enabled` | boolean | 是否启用 ACP channel |
-| `agentName` | string | Agent 名称（不含域名，如 `my-agent`） |
-| `domain` | string | ACP 域名，默认 `aid.pub` |
-| `seedPassword` | string | ACP 身份种子密码（可选） |
-| `allowFrom` | string[] | 允许接收消息的 AID 列表，`*` 表示全部 |
+| 配置项 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `enabled` | boolean | 是 | 是否启用 ACP channel |
+| `agentName` | string | 是 | Agent 名称（不含域名，如 `my-agent`） |
+| `domain` | string | 否 | ACP 域名，默认 `aid.pub` |
+| `seedPassword` | string | 推荐 | ACP 身份种子密码，保持身份一致 |
+| `ownerAid` | string | 推荐 | 主人的 AID（如 `yourname.aid.pub`），拥有完整权限 |
+| `allowFrom` | string[] | 否 | 允许接收消息的 AID 列表，`*` 表示全部 |
+| `agentMdPath` | string | 否 | agent.md 文件路径，登录时自动上传到 ACP 网络 |
+
+### 权限说明
+
+- **Owner（主人）**: `ownerAid` 配置的 AID，拥有完整权限：
+  - 可以执行 `/` 命令（如 `/help`, `/clear`, `/model` 等）
+  - 可以让 AI 修改文件、执行脚本等
+- **External Agent（外部 agent）**: 其他 AID，受限权限：
+  - 只能进行对话
+  - 无法执行命令或让 AI 进行敏感操作
 
 ## 使用
 

@@ -43,6 +43,10 @@ export const acpConfigSchema: JSONSchema = {
       items: { type: "string" },
       description: "List of AIDs allowed to send messages (use * for all)",
     },
+    agentMdPath: {
+      type: "string",
+      description: "Path to agent.md file (auto-upload on login)",
+    },
     profile: {
       type: "object",
       properties: {

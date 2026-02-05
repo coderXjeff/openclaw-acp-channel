@@ -106,6 +106,11 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
       label: "Allow From",
       help: "List of AIDs allowed to send messages (use * for all)",
     },
+    agentMdPath: {
+      label: "Agent.md Path",
+      help: "Path to agent.md file (auto-upload on login, e.g., ~/.acp-storage/AIDs/my-agent.aid.pub/public/agent.md)",
+      placeholder: "~/.acp-storage/AIDs/{aid}/public/agent.md",
+    },
   },
 };
 
