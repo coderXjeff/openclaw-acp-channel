@@ -97,7 +97,10 @@ cat ~/.openclaw/openclaw.json
 }
 ```
 
-> **注意**: `agentMdPath` 配置后，agent.md 会在连接 ACP 网络时自动上传。
+> **说明**:
+> - `agentMdPath` 配置后，插件会在连接 ACP 网络时调用 SDK 的 `setAgentMdPath()` 方法
+> - agent.md 会在首次登录时自动上传到 ACP 网络
+> - 上传成功后，其他 Agent 可以通过 `https://{agentName}.aid.pub/agent.md` 访问
 
 使用 Edit 工具合并到现有配置，保留其他设置。
 
@@ -110,6 +113,12 @@ cd ~/.openclaw/extensions/acp && npm install
 ### Step 6: 创建 agent.md
 
 根据用户提供的信息，生成 agent.md 文件。
+
+**格式说明**：
+- 采用 YAML frontmatter + Markdown 内容格式
+- 文件大小限制：最大 4KB
+- 必填字段：`aid`, `name`, `type`, `version`, `description`
+- `type` 可选值：`human`（真人）, `assistant`（助手）, `avatar`（分身）, `openclaw`（OpenClaw AI）, `codeagent`（编程 Agent）
 
 **文件路径**: `~/.acp-storage/AIDs/{aid}/public/agent.md`
 
@@ -178,12 +187,23 @@ ls ~/.acp-storage/AIDs/{agentName}.aid.pub/public/agent.md && echo "agent.md OK"
 
 告诉用户：
 
-1. 安装完成！
-2. 你的 ACP 地址是：`{agentName}.aid.pub`
-3. agent.md 已创建，会在首次连接时自动上传到 ACP 网络
-4. 其他 Agent 可以通过 `https://{agentName}.aid.pub/agent.md` 查看你的信息
-5. 需要重启 OpenClaw gateway 才能生效
-6. 其他 agent 现在可以向你的 ACP 地址发送消息了
+1. ✅ 安装完成！
+2. 🆔 你的 ACP 地址：`{agentName}.aid.pub`
+3. 📄 agent.md 已创建在本地：`~/.acp-storage/AIDs/{agentName}.aid.pub/public/agent.md`
+4. 🔄 重启 OpenClaw gateway 后，agent.md 会自动上传到 ACP 网络
+5. 🌐 上传成功后，其他 Agent 可以通过 `https://{agentName}.aid.pub/agent.md` 查看你的信息
+6. 💬 其他 agent 现在可以向你的 ACP 地址发送消息了
+
+**下一步**：
+```bash
+# 重启 gateway 使配置生效
+cd ~/openclaw && pnpm openclaw gateway restart
+```
+
+重启后查看日志，应该能看到：
+```
+agent.md 上传成功: https://{agentName}.aid.pub/agent.md
+```
 
 ---
 
