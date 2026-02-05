@@ -65,6 +65,15 @@ export class AcpClient {
       console.log(`  - messageServer: ${config.messageServer}`);
       console.log(`  - heartbeatServer: ${config.heartbeatServer}`);
 
+      // 3.5 初始化 FileSync（用于手动上传 agent.md）
+      if (config.messageSignature) {
+        const localDir = this.options.agentMdPath
+          ? this.options.agentMdPath.replace(/\/[^/]+$/, "")  // 取目录部分
+          : "";
+        this.manager.initFileSync(this.aid, config.messageSignature, localDir);
+        console.log(`[ACP-TS] FileSync initialized`);
+      }
+
       // 4. 初始化 WebSocket 连接
       const aws = this.manager.initAWS(this.aid, config);
 

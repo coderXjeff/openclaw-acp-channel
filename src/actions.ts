@@ -1,6 +1,7 @@
 import type { ChannelMessageActionAdapter, ChannelMessageActionName } from "./plugin-types.js";
 import type { AcpChannelConfig } from "./types.js";
 import { sendAcpMessage } from "./outbound.js";
+import { syncAgentMd } from "./monitor.js";
 
 const providerId = "acp";
 
@@ -41,6 +42,8 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
       return [];
     }
     const actions = new Set<ChannelMessageActionName>(["send"]);
+    // 添加 sync-agent-md action
+    actions.add("sync-agent-md" as ChannelMessageActionName);
     return Array.from(actions);
   },
 
@@ -62,6 +65,19 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
   handleAction: async ({ action, params, cfg, accountId }) => {
     if (!isAcpEnabled(cfg)) {
       throw new Error("ACP channel is not enabled");
+    }
+
+    // 处理 sync-agent-md action
+    if (action === "sync-agent-md") {
+      try {
+        const result = await syncAgentMd();
+        return jsonResult(result);
+      } catch (error) {
+        return jsonResult({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     if (action === "send") {

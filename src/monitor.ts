@@ -3,6 +3,9 @@ import { DEFAULT_SESSION_CONFIG } from "./types.js";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import { AcpClient, type ConnectionStatus } from "./acp-client.js";
 import { getAcpRuntime, hasAcpRuntime } from "./runtime.js";
+import * as fs from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
 
 // 状态
 let acpClient: AcpClient | null = null;
@@ -14,6 +17,100 @@ let currentAcpConfig: AcpChannelConfig | null = null;
 // 会话状态管理
 const sessionStates = new Map<string, AcpSessionState>();
 let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+// agent.md MD5 存储路径
+const AGENT_MD_HASH_FILE = path.join(process.env.HOME || "~", ".acp-storage", "agent-md-hash.json");
+
+/**
+ * 计算文件 MD5
+ */
+function calculateFileMd5(filePath: string): string | null {
+  try {
+    const resolvedPath = filePath.replace(/^~/, process.env.HOME || "");
+    if (!fs.existsSync(resolvedPath)) {
+      return null;
+    }
+    const content = fs.readFileSync(resolvedPath, "utf8");
+    return crypto.createHash("md5").update(content).digest("hex");
+  } catch (error) {
+    console.error("[ACP] Failed to calculate MD5:", error);
+    return null;
+  }
+}
+
+/**
+ * 获取存储的 agent.md MD5
+ */
+function getStoredAgentMdHash(aid: string): string | null {
+  try {
+    if (!fs.existsSync(AGENT_MD_HASH_FILE)) {
+      return null;
+    }
+    const data = JSON.parse(fs.readFileSync(AGENT_MD_HASH_FILE, "utf8"));
+    return data[aid] || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * 存储 agent.md MD5
+ */
+function saveAgentMdHash(aid: string, hash: string): void {
+  try {
+    const dir = path.dirname(AGENT_MD_HASH_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    let data: Record<string, string> = {};
+    if (fs.existsSync(AGENT_MD_HASH_FILE)) {
+      data = JSON.parse(fs.readFileSync(AGENT_MD_HASH_FILE, "utf8"));
+    }
+    data[aid] = hash;
+    fs.writeFileSync(AGENT_MD_HASH_FILE, JSON.stringify(data, null, 2));
+    console.log(`[ACP] Saved agent.md hash for ${aid}: ${hash}`);
+  } catch (error) {
+    console.error("[ACP] Failed to save agent.md hash:", error);
+  }
+}
+
+/**
+ * 检查并上传 agent.md（如果有变化）
+ */
+async function checkAndUploadAgentMd(): Promise<void> {
+  if (!acpClient || !currentAcpConfig?.agentMdPath || !currentAccount) {
+    return;
+  }
+
+  const aid = currentAccount.fullAid;
+  const currentHash = calculateFileMd5(currentAcpConfig.agentMdPath);
+
+  if (!currentHash) {
+    console.log("[ACP] agent.md file not found, skipping upload check");
+    return;
+  }
+
+  const storedHash = getStoredAgentMdHash(aid);
+
+  if (currentHash === storedHash) {
+    console.log("[ACP] agent.md unchanged (hash match), skipping upload");
+    return;
+  }
+
+  console.log(`[ACP] agent.md changed (${storedHash?.substring(0, 8) || 'none'} -> ${currentHash.substring(0, 8)}), uploading...`);
+
+  try {
+    const result = await acpClient.uploadAgentMdFromFile(currentAcpConfig.agentMdPath);
+    if (result.success) {
+      saveAgentMdHash(aid, currentHash);
+      console.log(`[ACP] agent.md uploaded successfully: ${result.url}`);
+    } else {
+      console.error(`[ACP] Failed to upload agent.md: ${result.error}`);
+    }
+  } catch (error) {
+    console.error("[ACP] Error uploading agent.md:", error);
+  }
+}
 
 /**
  * 获取会话配置（合并默认值并校验）
@@ -229,6 +326,9 @@ export async function startAcpMonitor(
     // 但函数内部有防重复检查，所以这里调用是安全的
     startIdleChecker();
     console.log(`[ACP] Monitor started for ${account.fullAid}`);
+
+    // 检查并上传 agent.md（如果有变化）
+    await checkAndUploadAgentMd();
   } catch (error) {
     console.error("[ACP] Failed to start monitor:", error);
     throw error;
@@ -536,4 +636,34 @@ export async function closeSessionManually(sessionId: string, reason: string = '
   }
   await closeSession(state, reason, true);
   return true;
+}
+
+/**
+ * 手动同步 agent.md 到 ACP 网络
+ * 用于在修改 agent.md 后强制重新上传
+ */
+export async function syncAgentMd(): Promise<{ success: boolean; url?: string; error?: string }> {
+  if (!acpClient) {
+    return { success: false, error: "ACP client not initialized" };
+  }
+
+  if (!currentAcpConfig?.agentMdPath) {
+    return { success: false, error: "agentMdPath not configured" };
+  }
+
+  console.log(`[ACP] Manually syncing agent.md from ${currentAcpConfig.agentMdPath}`);
+
+  try {
+    const result = await acpClient.uploadAgentMdFromFile(currentAcpConfig.agentMdPath);
+    if (result.success) {
+      console.log(`[ACP] agent.md synced successfully: ${result.url}`);
+    } else {
+      console.error(`[ACP] Failed to sync agent.md: ${result.error}`);
+    }
+    return result;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[ACP] Error syncing agent.md: ${errorMsg}`);
+    return { success: false, error: errorMsg };
+  }
 }
