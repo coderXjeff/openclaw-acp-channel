@@ -34,6 +34,10 @@ export const acpConfigSchema: JSONSchema = {
       type: "string",
       description: "Seed password for ACP identity",
     },
+    ownerAid: {
+      type: "string",
+      description: "Owner's AID (e.g., 'owner-name.aid.pub')",
+    },
     allowFrom: {
       type: "array",
       items: { type: "string" },

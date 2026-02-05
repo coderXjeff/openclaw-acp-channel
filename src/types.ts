@@ -4,6 +4,7 @@ export interface AcpChannelConfig {
   agentName: string;        // Agent 名称 (不含域名)
   domain: string;           // ACP 域名，如 aid.pub
   seedPassword?: string;    // 种子密码
+  ownerAid?: string;        // 主人的 AID
   allowFrom?: string[];     // 允许接收消息的 AID 列表
   profile?: {
     displayName?: string;
@@ -37,6 +38,7 @@ export interface ResolvedAcpAccount {
   domain: string;
   fullAid: string;          // 完整 AID: agentName.domain
   enabled: boolean;
+  ownerAid: string;
   allowFrom: string[];
   seedPassword: string;
 }
