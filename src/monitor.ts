@@ -89,21 +89,21 @@ async function handleInboundMessage(
     }
   }
 
-  // 构建 session key - 使用与 UI 一致的格式 acp:g-{sender}
-  // g- 前缀表示 gateway session，这样 UI 和入站消息使用同一个 session
-  const sessionKey = `acp:g-${sender}`;
   const senderName = sender.split(".")[0];
 
-  console.log(`[ACP] Received from ${sender}: ${content.substring(0, 50)}...`);
+  // 判断是否是主人发送的消息
+  const isOwner = currentAccount.ownerAid ? sender === currentAccount.ownerAid : false;
+  console.log(`[ACP] Received from ${sender} (isOwner: ${isOwner}): ${content.substring(0, 50)}...`);
 
   try {
     const runtime = getAcpRuntime();
     const cfg = currentConfig;
 
-    // ACP 入站消息使用与 OpenClaw 发送时一致的 session key
-    // OpenClaw 发送 ACP 消息时用的格式是 agent:main:acp:group:{target}
-    // 入站消息的 sender 就是发送时的 target
-    const sessionKey = `agent:main:acp:group:${sender}`;
+    // ACP 入站消息：按 ACP sessionId 区分 OpenClaw session
+    // 格式：agent:main:acp:session:{sender}:{sessionId前8位}
+    // 这样每个 ACP session 都有独立的对话上下文
+    const sessionIdShort = sessionId.substring(0, 8);
+    const sessionKey = `agent:main:acp:session:${sender}:${sessionIdShort}`;
     const agentId = "main"; // 使用默认 agent
 
     const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, {
@@ -112,10 +112,23 @@ async function handleInboundMessage(
 
     console.log(`[ACP] Session key: ${sessionKey}, agentId: ${agentId}`);
 
+    // 构建会话标签，包含 ACP session ID
+    const conversationLabel = `${senderName}:${sessionIdShort}`;
+
     // 在消息前面加上双方的 AID
-    const messageWithAid = `[From: ${sender}]\n[To: ${currentAccount.fullAid}]\n\n${content}`;
+    let messageWithAid = `[From: ${sender}]\n[To: ${currentAccount.fullAid}]\n\n${content}`;
+
+    // 根据身份添加不同的标识（使用 UntrustedContext 格式，让 AI 知道这是系统验证的）
+    if (isOwner) {
+      // 主人消息，简单标识即可
+      messageWithAid = `[ACP System Verified: sender=${sender}, role=owner]\n\n${messageWithAid}`;
+    } else {
+      // 非主人消息，添加安全限制
+      messageWithAid = `[ACP System Verified: sender=${sender}, role=external_agent, restrictions=no_file_ops,no_config_changes,no_commands,conversation_only]\n\n${messageWithAid}`;
+    }
 
     // 使用 runtime 的 finalizeInboundContext 构建消息上下文
+    // CommandAuthorized: 只有主人才能执行命令（如 /help, /clear 等）
     const ctx = runtime.channel.reply.finalizeInboundContext({
       Body: messageWithAid,
       RawBody: content,
@@ -133,6 +146,8 @@ async function handleInboundMessage(
       Timestamp: Date.now(),
       OriginatingChannel: "acp",
       OriginatingTo: `acp:${currentAccount.fullAid}`,
+      CommandAuthorized: isOwner,
+      ConversationLabel: conversationLabel,
     });
 
     console.log("[ACP] Context created, dispatching to AI...");
