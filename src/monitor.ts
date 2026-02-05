@@ -148,16 +148,74 @@ function getSessionConfig(): Required<AcpSessionConfig> {
   if (typeof config.idleTimeoutMs !== 'number' || config.idleTimeoutMs < 1000) {
     config.idleTimeoutMs = DEFAULT_SESSION_CONFIG.idleTimeoutMs;
   }
+  if (typeof config.maxConcurrentSessions !== 'number' || config.maxConcurrentSessions < 1) {
+    config.maxConcurrentSessions = DEFAULT_SESSION_CONFIG.maxConcurrentSessions;
+  }
 
   return config;
 }
 
 /**
- * 获取或创建会话状态
+ * 获取活跃会话数量
  */
-function getOrCreateSessionState(sessionId: string, targetAid: string): AcpSessionState {
+function getActiveSessionCount(): number {
+  let count = 0;
+  for (const state of sessionStates.values()) {
+    if (state.status === 'active') {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * 执行 LRU 淘汰 - 关闭最久未活动的会话
+ * @param maxSessions 最大允许的会话数
+ * @returns 被淘汰的会话数量
+ */
+async function evictLruSessions(maxSessions: number): Promise<number> {
+  const activeSessions: AcpSessionState[] = [];
+
+  // 收集所有活跃会话
+  for (const state of sessionStates.values()) {
+    if (state.status === 'active') {
+      activeSessions.push(state);
+    }
+  }
+
+  // 如果未超限，无需淘汰
+  if (activeSessions.length < maxSessions) {
+    return 0;
+  }
+
+  // 按 lastActivityAt 升序排序（最久未活动的在前）
+  activeSessions.sort((a, b) => a.lastActivityAt - b.lastActivityAt);
+
+  // 计算需要淘汰的数量（为新会话腾出 1 个位置）
+  const evictCount = activeSessions.length - maxSessions + 1;
+  let evicted = 0;
+
+  for (let i = 0; i < evictCount && i < activeSessions.length; i++) {
+    const state = activeSessions[i];
+    console.log(`[ACP] LRU evicting session ${state.sessionId} (last active: ${new Date(state.lastActivityAt).toISOString()})`);
+    await closeSession(state, 'lru_evicted', true);
+    evicted++;
+  }
+
+  console.log(`[ACP] LRU evicted ${evicted} sessions (max: ${maxSessions})`);
+  return evicted;
+}
+
+/**
+ * 获取或创建会话状态（带 LRU 淘汰）
+ */
+async function getOrCreateSessionState(sessionId: string, targetAid: string): Promise<AcpSessionState> {
   let state = sessionStates.get(sessionId);
   if (!state) {
+    // 新会话：先执行 LRU 淘汰检查
+    const config = getSessionConfig();
+    await evictLruSessions(config.maxConcurrentSessions);
+
     const now = Date.now();
     state = {
       sessionId,
@@ -169,7 +227,8 @@ function getOrCreateSessionState(sessionId: string, targetAid: string): AcpSessi
       lastActivityAt: now,
     };
     sessionStates.set(sessionId, state);
-    console.log(`[ACP] Created new session state for ${sessionId}`);
+    const activeCount = getActiveSessionCount();
+    console.log(`[ACP] Created new session state for ${sessionId} (active: ${activeCount}/${config.maxConcurrentSessions})`);
   }
   return state;
 }
@@ -369,8 +428,8 @@ async function handleInboundMessage(
 
   const config = getSessionConfig();
 
-  // ===== 获取或创建会话状态（allowlist 检查通过后）=====
-  const sessionState = getOrCreateSessionState(sessionId, sender);
+  // ===== 获取或创建会话状态（allowlist 检查通过后，含 LRU 淘汰）=====
+  const sessionState = await getOrCreateSessionState(sessionId, sender);
 
   // ===== 第二层：检查会话是否已关闭或正在关闭 =====
   if (sessionState.status === 'closed' || sessionState.status === 'closing') {

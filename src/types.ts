@@ -30,6 +30,9 @@ export interface AcpSessionConfig {
   maxTurns?: number;                  // 最大入站消息次数（非对话轮次），默认 15，最小 1
   maxDurationMs?: number;             // 最大持续时间(ms)，默认 180000 (3分钟)，最小 1000
   idleTimeoutMs?: number;             // 空闲超时(ms)，默认 60000 (60秒)，最小 1000
+
+  // 第四层：并发控制 - LRU 淘汰
+  maxConcurrentSessions?: number;     // 最大并发会话数，默认 10，超出时淘汰最久未活动的会话
 }
 
 // 解析后的账户信息
@@ -94,4 +97,6 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   maxTurns: 15,
   maxDurationMs: 180000,    // 3 分钟
   idleTimeoutMs: 60000,     // 60 秒（考虑复杂任务和网络抖动）
+  // 第四层
+  maxConcurrentSessions: 10, // 最大 10 个并发会话
 };
