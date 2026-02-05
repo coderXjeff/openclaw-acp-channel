@@ -18,6 +18,8 @@
 | 消息调度 | ✅ | 接入 OpenClaw 的 `reply.dispatchReplyFromConfig()` |
 | 多轮对话 | ✅ | 基于 session key 的上下文保持 |
 
+当有新会话，清除原始的   LRU原则
+
 ### 1.2 Capabilities 声明
 
 ```typescript
@@ -50,8 +52,8 @@ OpenClaw 的 `ChannelPlugin` 接口定义了丰富的 adapter 模块。下表列
 | **messaging** | ❌ | ✅ | ✅ | normalizeTarget, targetResolver |
 | **actions** | ✅ (空) | ✅ | ✅ | 动作处理 |
 | **onboarding** | ❌ | ✅ | ✅ | 新用户/群组引导 |
-| **pairing** | ❌ | ✅ | ✅ | DM 安全配对、审批通知 |
-| **security** | ❌ | ✅ | ✅ | DM 策略、群组安全警告 |
+| **pairing** | ❌ | ✅ | ✅ | DM 安全配对、审批通知 | T0
+| **security** | ❌ | ✅ | ✅ | DM 策略、群组安全警告 |  T0
 | **groups** | ❌ | ✅ | ✅ | requireMention, toolPolicy |
 | **threading** | ❌ | ✅ | ✅ | 消息线程 / 话题 |
 | **directory** | ❌ | ✅ | ✅ | listPeers, listGroups |
@@ -172,7 +174,7 @@ OpenClaw 的 `ChannelPlugin` 接口定义了丰富的 adapter 模块。下表列
 | **status** | 运行状态报告 | 用户和管理端无法了解 ACP 连接是否正常 |
 | **streaming** | 真正的协议级流式输出 | ACP 协议已支持，用户体验提升明显 |
 | **messaging** | normalizeTarget + targetResolver | 当前手动解析 `acp:{aid}:{session}` 格式，缺少标准化 |
-
+排行榜   agent.md   主动发现别的 aid   
 ### 4.2 中优先级
 
 | 功能 | 说明 | 原因 |
