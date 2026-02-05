@@ -1,4 +1,5 @@
-import type { AcpChannelConfig, ResolvedAcpAccount } from "./types.js";
+import type { AcpChannelConfig, ResolvedAcpAccount, AcpSessionState, AcpSessionConfig } from "./types.js";
+import { DEFAULT_SESSION_CONFIG } from "./types.js";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import { AcpClient, type ConnectionStatus } from "./acp-client.js";
 import { getAcpRuntime, hasAcpRuntime } from "./runtime.js";
@@ -8,6 +9,175 @@ let acpClient: AcpClient | null = null;
 let isRunning = false;
 let currentAccount: ResolvedAcpAccount | null = null;
 let currentConfig: OpenClawConfig | null = null;
+let currentAcpConfig: AcpChannelConfig | null = null;
+
+// 会话状态管理
+const sessionStates = new Map<string, AcpSessionState>();
+let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * 获取会话配置（合并默认值并校验）
+ */
+function getSessionConfig(): Required<AcpSessionConfig> {
+  const userConfig = currentAcpConfig?.session ?? {};
+
+  // 合并配置
+  const config = {
+    ...DEFAULT_SESSION_CONFIG,
+    ...userConfig,
+    // 确保 endMarkers 不会被 undefined 或空数组覆盖
+    endMarkers: userConfig.endMarkers?.length ? userConfig.endMarkers : DEFAULT_SESSION_CONFIG.endMarkers,
+  };
+
+  // 校验并修正配置值
+  // 1. 过滤空字符串和过短的标记（至少 3 个字符，避免误触发）
+  config.endMarkers = config.endMarkers.filter(marker =>
+    typeof marker === 'string' && marker.trim().length >= 3
+  );
+  if (config.endMarkers.length === 0) {
+    config.endMarkers = DEFAULT_SESSION_CONFIG.endMarkers;
+  }
+
+  // 2. 确保数值配置为正数
+  if (typeof config.consecutiveEmptyThreshold !== 'number' || config.consecutiveEmptyThreshold < 1) {
+    config.consecutiveEmptyThreshold = DEFAULT_SESSION_CONFIG.consecutiveEmptyThreshold;
+  }
+  if (typeof config.maxTurns !== 'number' || config.maxTurns < 1) {
+    config.maxTurns = DEFAULT_SESSION_CONFIG.maxTurns;
+  }
+  if (typeof config.maxDurationMs !== 'number' || config.maxDurationMs < 1000) {
+    config.maxDurationMs = DEFAULT_SESSION_CONFIG.maxDurationMs;
+  }
+  if (typeof config.idleTimeoutMs !== 'number' || config.idleTimeoutMs < 1000) {
+    config.idleTimeoutMs = DEFAULT_SESSION_CONFIG.idleTimeoutMs;
+  }
+
+  return config;
+}
+
+/**
+ * 获取或创建会话状态
+ */
+function getOrCreateSessionState(sessionId: string, targetAid: string): AcpSessionState {
+  let state = sessionStates.get(sessionId);
+  if (!state) {
+    const now = Date.now();
+    state = {
+      sessionId,
+      targetAid,
+      status: 'active',
+      turns: 0,
+      consecutiveEmptyReplies: 0,
+      createdAt: now,
+      lastActivityAt: now,
+    };
+    sessionStates.set(sessionId, state);
+    console.log(`[ACP] Created new session state for ${sessionId}`);
+  }
+  return state;
+}
+
+/**
+ * 检查消息是否包含结束标记
+ */
+function hasEndMarker(content: string, markers: string[]): boolean {
+  const trimmed = content.trim();
+  // includes 已经涵盖了 startsWith 和 endsWith 的情况
+  return markers.some(marker => trimmed.includes(marker));
+}
+
+/**
+ * 检查会话是否应该终止（第三层硬限制）
+ */
+function checkHardLimits(state: AcpSessionState, config: Required<AcpSessionConfig>): { terminate: boolean; reason?: string } {
+  const now = Date.now();
+
+  // 1. 轮次限制
+  if (state.turns >= config.maxTurns) {
+    return { terminate: true, reason: `max_turns_${config.maxTurns}` };
+  }
+
+  // 2. 总时长限制
+  const duration = now - state.createdAt;
+  if (duration >= config.maxDurationMs) {
+    return { terminate: true, reason: `max_duration_${config.maxDurationMs}ms` };
+  }
+
+  // 3. 空闲超时（在定时器中检查，这里不检查）
+
+  return { terminate: false };
+}
+
+/**
+ * 关闭会话
+ */
+async function closeSession(state: AcpSessionState, reason: string, sendEndMarker: boolean = false): Promise<void> {
+  state.status = 'closed';
+  state.closedAt = Date.now();
+  state.closeReason = reason;
+  console.log(`[ACP] Session ${state.sessionId} closed: ${reason}`);
+
+  // 发送结束标记（如果配置了）
+  if (sendEndMarker && acpClient?.connected) {
+    const config = getSessionConfig();
+    if (config.sendEndMarkerOnClose) {
+      try {
+        // 使用配置的第一个结束标记
+        const endMarker = config.endMarkers[0] || '[END]';
+        const endMessage = `${endMarker} Session closed.`;
+        await acpClient.sendReply(state.sessionId, endMessage);
+        console.log(`[ACP] Sent end marker to ${state.targetAid}: ${endMarker}`);
+      } catch (err) {
+        console.error(`[ACP] Failed to send end marker:`, err);
+      }
+    }
+  }
+}
+
+/**
+ * 启动空闲超时检查定时器
+ */
+function startIdleChecker(): void {
+  if (idleCheckInterval) return;
+
+  idleCheckInterval = setInterval(() => {
+    const config = getSessionConfig();
+    const now = Date.now();
+
+    for (const [sessionId, state] of sessionStates) {
+      if (state.status !== 'active') continue;
+
+      const idleTime = now - state.lastActivityAt;
+      if (idleTime >= config.idleTimeoutMs) {
+        console.log(`[ACP] Session ${sessionId} idle timeout (${idleTime}ms)`);
+        // 使用 void 明确表示不等待，避免 unhandled promise
+        void closeSession(state, `idle_timeout_${config.idleTimeoutMs}ms`, true);
+      }
+    }
+
+    // 清理已关闭超过 5 分钟的会话
+    const cleanupThreshold = 5 * 60 * 1000;
+    for (const [sessionId, state] of sessionStates) {
+      if (state.status === 'closed' && state.closedAt && (now - state.closedAt) > cleanupThreshold) {
+        sessionStates.delete(sessionId);
+        console.log(`[ACP] Cleaned up closed session ${sessionId}`);
+      }
+    }
+  }, 5000); // 每 5 秒检查一次
+
+  console.log("[ACP] Idle checker started");
+}
+
+/**
+ * 停止空闲超时检查定时器
+ */
+function stopIdleChecker(): void {
+  if (idleCheckInterval) {
+    clearInterval(idleCheckInterval);
+    idleCheckInterval = null;
+    console.log("[ACP] Idle checker stopped");
+  }
+}
 
 /**
  * 启动 ACP 监听（直接连接 ACP 网络，无需 Python Bridge）
@@ -24,8 +194,10 @@ export async function startAcpMonitor(
 
   currentAccount = account;
   currentConfig = cfg;
+  currentAcpConfig = acpConfig;
 
   console.log(`[ACP] Starting ACP monitor for ${account.fullAid}`);
+  console.log(`[ACP] Session config:`, getSessionConfig());
 
   acpClient = new AcpClient({
     agentName: acpConfig.agentName,
@@ -38,8 +210,10 @@ export async function startAcpMonitor(
       console.log(`[ACP] Connection status changed: ${status}`);
       if (status === "connected") {
         isRunning = true;
+        startIdleChecker();
       } else if (status === "disconnected" || status === "error") {
         isRunning = false;
+        stopIdleChecker();
       }
     },
     onError: (error) => {
@@ -50,6 +224,9 @@ export async function startAcpMonitor(
   try {
     await acpClient.connect();
     isRunning = true;
+    // 注意：startIdleChecker 可能已在 onStatusChange 中被调用，
+    // 但函数内部有防重复检查，所以这里调用是安全的
+    startIdleChecker();
     console.log(`[ACP] Monitor started for ${account.fullAid}`);
   } catch (error) {
     console.error("[ACP] Failed to start monitor:", error);
@@ -78,7 +255,7 @@ async function handleInboundMessage(
     return;
   }
 
-  // 检查 allowlist
+  // ===== 首先检查 allowlist（在任何其他操作之前）=====
   if (currentAccount.allowFrom.length > 0) {
     const allowed = currentAccount.allowFrom.some(
       (pattern) => pattern === "*" || pattern === sender
@@ -89,10 +266,47 @@ async function handleInboundMessage(
     }
   }
 
-  // 构建 session key - 使用与 UI 一致的格式 acp:g-{sender}
-  // g- 前缀表示 gateway session，这样 UI 和入站消息使用同一个 session
-  const sessionKey = `acp:g-${sender}`;
-  const senderName = sender.split(".")[0];
+  const config = getSessionConfig();
+
+  // ===== 获取或创建会话状态（allowlist 检查通过后）=====
+  const sessionState = getOrCreateSessionState(sessionId, sender);
+
+  // ===== 第二层：检查会话是否已关闭或正在关闭 =====
+  if (sessionState.status === 'closed' || sessionState.status === 'closing') {
+    console.log(`[ACP] Session ${sessionId} is ${sessionState.status} (${sessionState.closeReason}), ignoring message`);
+    // 可选：发送 ACK（包含结束标记，避免对方继续回复）
+    if (config.sendAckOnReceiveEnd && acpClient?.connected) {
+      const endMarker = config.endMarkers[0] || '[END]';
+      await acpClient.sendReply(sessionId, `${endMarker} [ACK] Session already closed.`);
+    }
+    return;
+  }
+
+  // ===== 第三层：硬限制检查 =====
+  const hardLimitCheck = checkHardLimits(sessionState, config);
+  if (hardLimitCheck.terminate) {
+    console.log(`[ACP] Session ${sessionId} hit hard limit: ${hardLimitCheck.reason}`);
+    await closeSession(sessionState, hardLimitCheck.reason!, true);
+    return;
+  }
+
+  // ===== 第二层：检查入站消息是否包含结束标记 =====
+  if (hasEndMarker(content, config.endMarkers)) {
+    console.log(`[ACP] Received end marker from ${sender}, closing session`);
+    await closeSession(sessionState, 'received_end_marker', false);
+    // 发送 ACK（如果配置了，包含结束标记避免对方继续回复）
+    if (config.sendAckOnReceiveEnd && acpClient?.connected) {
+      const endMarker = config.endMarkers[0] || '[END]';
+      await acpClient.sendReply(sessionId, `${endMarker} [ACK] Session ended. Goodbye!`);
+    }
+    return;
+  }
+
+  // ===== 更新会话状态 =====
+  sessionState.turns++;
+  sessionState.lastActivityAt = Date.now();
+  // 注意：turns 统计的是入站消息次数，不是对话轮次（一轮 = 一问一答）
+  console.log(`[ACP] Session ${sessionId} inbound message ${sessionState.turns}/${config.maxTurns}`);
 
   console.log(`[ACP] Received from ${sender}: ${content.substring(0, 50)}...`);
 
@@ -105,6 +319,7 @@ async function handleInboundMessage(
     // 入站消息的 sender 就是发送时的 target
     const sessionKey = `agent:main:acp:group:${sender}`;
     const agentId = "main"; // 使用默认 agent
+    const senderName = sender.split(".")[0];
 
     const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, {
       agentId,
@@ -147,14 +362,25 @@ async function handleInboundMessage(
       },
     });
 
+    // 用于追踪回复内容
+    let replyText = "";
+
     // 创建回复分发器
     const { dispatcher, replyOptions, markDispatchIdle } = runtime.channel.reply.createReplyDispatcherWithTyping({
       deliver: async (payload) => {
-        console.log(`[ACP] Delivering reply: ${payload.text?.substring(0, 50)}`);
+        const text = payload.text ?? "";
+        replyText = text;
+        console.log(`[ACP] Delivering reply: ${text.substring(0, 50)}`);
+
+        // ===== 第一层：检查 AI 回复是否包含结束标记 =====
+        if (hasEndMarker(text, config.endMarkers)) {
+          console.log(`[ACP] AI sent end marker, closing session after this reply`);
+          sessionState.status = 'closing';
+        }
 
         // 通过 ACP 客户端发送回复
         if (acpClient?.connected) {
-          await acpClient.sendReply(sessionId, payload.text ?? "");
+          await acpClient.sendReply(sessionId, text);
           console.log("[ACP] Reply sent");
         } else {
           console.error("[ACP] Cannot send reply: client not connected");
@@ -178,6 +404,28 @@ async function handleInboundMessage(
 
     markDispatchIdle();
     console.log("[ACP] Dispatch result:", result);
+
+    // ===== 第一层：检查空回复 =====
+    if (!replyText?.trim()) {
+      sessionState.consecutiveEmptyReplies++;
+      console.log(`[ACP] Empty reply (${sessionState.consecutiveEmptyReplies}/${config.consecutiveEmptyThreshold})`);
+
+      if (sessionState.consecutiveEmptyReplies >= config.consecutiveEmptyThreshold) {
+        console.log(`[ACP] ${config.consecutiveEmptyThreshold} consecutive empty replies, closing session`);
+        await closeSession(sessionState, `consecutive_empty_${config.consecutiveEmptyThreshold}`, true);
+      }
+    } else {
+      // 重置空回复计数
+      sessionState.consecutiveEmptyReplies = 0;
+    }
+
+    // 如果状态是 closing，正式关闭（状态可能在 deliver 回调中被修改）
+    if ((sessionState.status as string) === 'closing') {
+      await closeSession(sessionState, 'ai_sent_end_marker', false);
+    }
+
+    // 更新最后活动时间
+    sessionState.lastActivityAt = Date.now();
 
   } catch (error) {
     console.error("[ACP] Error processing inbound message:", error);
@@ -208,11 +456,14 @@ export async function stopAcpMonitor(): Promise<void> {
   }
 
   console.log("[ACP] Stopping monitor");
+  stopIdleChecker();
   acpClient.disconnect();
   acpClient = null;
   isRunning = false;
   currentAccount = null;
   currentConfig = null;
+  currentAcpConfig = null;
+  sessionStates.clear();
 }
 
 /**
@@ -234,4 +485,35 @@ export function getCurrentAccount(): ResolvedAcpAccount | null {
  */
 export function isMonitorRunning(): boolean {
   return isRunning;
+}
+
+/**
+ * 获取会话状态（用于调试）
+ */
+export function getSessionState(sessionId: string): AcpSessionState | undefined {
+  return sessionStates.get(sessionId);
+}
+
+/**
+ * 获取所有会话状态（用于调试）
+ */
+export function getAllSessionStates(): Map<string, AcpSessionState> {
+  return new Map(sessionStates);
+}
+
+/**
+ * 手动关闭会话
+ */
+export async function closeSessionManually(sessionId: string, reason: string = 'manual_close'): Promise<boolean> {
+  const state = sessionStates.get(sessionId);
+  if (!state) {
+    console.log(`[ACP] Session ${sessionId} not found`);
+    return false;
+  }
+  if (state.status === 'closed') {
+    console.log(`[ACP] Session ${sessionId} already closed`);
+    return false;
+  }
+  await closeSession(state, reason, true);
+  return true;
 }

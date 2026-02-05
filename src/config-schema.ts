@@ -7,6 +7,9 @@ type JSONSchema = {
   default?: unknown;
   description?: string;
   pattern?: string;
+  minimum?: number;
+  minItems?: number;
+  minLength?: number;
 };
 
 export const acpConfigSchema: JSONSchema = {
@@ -44,6 +47,52 @@ export const acpConfigSchema: JSONSchema = {
         capabilities: {
           type: "array",
           items: { type: "string" },
+        },
+      },
+    },
+    session: {
+      type: "object",
+      description: "Session termination control settings",
+      properties: {
+        endMarkers: {
+          type: "array",
+          items: { type: "string", minLength: 3 },
+          default: ["[END]", "[GOODBYE]", "[NO_REPLY]"],
+          description: "End markers to detect session termination (min 3 chars each)",
+        },
+        consecutiveEmptyThreshold: {
+          type: "number",
+          default: 2,
+          minimum: 1,
+          description: "Number of consecutive empty replies before closing session",
+        },
+        sendEndMarkerOnClose: {
+          type: "boolean",
+          default: true,
+          description: "Send end marker when closing session",
+        },
+        sendAckOnReceiveEnd: {
+          type: "boolean",
+          default: false,
+          description: "Send ACK when receiving end marker",
+        },
+        maxTurns: {
+          type: "number",
+          default: 15,
+          minimum: 1,
+          description: "Maximum inbound messages per session",
+        },
+        maxDurationMs: {
+          type: "number",
+          default: 180000,
+          minimum: 1000,
+          description: "Maximum session duration in milliseconds",
+        },
+        idleTimeoutMs: {
+          type: "number",
+          default: 60000,
+          minimum: 1000,
+          description: "Idle timeout in milliseconds",
         },
       },
     },

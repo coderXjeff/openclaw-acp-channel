@@ -10,6 +10,24 @@ export interface AcpChannelConfig {
     description?: string;
     capabilities?: string[];
   };
+  // 会话终止控制配置
+  session?: AcpSessionConfig;
+}
+
+// 会话终止控制配置
+export interface AcpSessionConfig {
+  // 第一层：软控制 - AI 智能决策
+  endMarkers?: string[];              // 结束标记，默认 ['[END]', '[GOODBYE]']，至少 3 字符
+  consecutiveEmptyThreshold?: number; // 连续空回复阈值，默认 2
+
+  // 第二层：协议层 - 双向终止标记
+  sendEndMarkerOnClose?: boolean;     // 关闭时发送结束标记，默认 true
+  sendAckOnReceiveEnd?: boolean;      // 收到结束标记时发送 ACK，默认 false
+
+  // 第三层：硬限制 - 三件套
+  maxTurns?: number;                  // 最大入站消息次数（非对话轮次），默认 15，最小 1
+  maxDurationMs?: number;             // 最大持续时间(ms)，默认 180000 (3分钟)，最小 1000
+  idleTimeoutMs?: number;             // 空闲超时(ms)，默认 60000 (60秒)，最小 1000
 }
 
 // 解析后的账户信息
@@ -47,3 +65,30 @@ export interface AcpSession {
   targetAid: string;
   createdAt: number;
 }
+
+// 会话状态（用于终止控制）
+export interface AcpSessionState {
+  sessionId: string;
+  targetAid: string;
+  status: 'active' | 'closing' | 'closed';
+  turns: number;                    // 入站消息次数
+  consecutiveEmptyReplies: number;  // 连续空回复计数
+  createdAt: number;                // 创建时间
+  lastActivityAt: number;           // 最后活动时间
+  closedAt?: number;                // 关闭时间
+  closeReason?: string;             // 关闭原因
+}
+
+// 默认会话配置
+export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
+  // 第一层
+  endMarkers: ['[END]', '[GOODBYE]', '[NO_REPLY]'],
+  consecutiveEmptyThreshold: 2,
+  // 第二层
+  sendEndMarkerOnClose: true,
+  sendAckOnReceiveEnd: false,
+  // 第三层
+  maxTurns: 15,
+  maxDurationMs: 180000,    // 3 分钟
+  idleTimeoutMs: 60000,     // 60 秒（考虑复杂任务和网络抖动）
+};
