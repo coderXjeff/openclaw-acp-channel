@@ -48,6 +48,7 @@ const acpConfigAdapter = {
       domain,
       fullAid: agentName ? `${agentName}.${domain}` : "",
       enabled: acpConfig?.enabled ?? false,
+      ownerAid: acpConfig?.ownerAid ?? "",
       allowFrom: acpConfig?.allowFrom ?? [],
       seedPassword: acpConfig?.seedPassword ?? "",
     };
@@ -95,6 +96,11 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
       label: "Seed Password",
       help: "Password for ACP identity seed (optional)",
       sensitive: true,
+    },
+    ownerAid: {
+      label: "Owner AID",
+      help: "Owner's AID for privileged access (e.g., 'owner-name.aid.pub')",
+      placeholder: "owner-name.aid.pub",
     },
     allowFrom: {
       label: "Allow From",
