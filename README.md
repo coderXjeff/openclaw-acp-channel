@@ -1,0 +1,135 @@
+# OpenClaw ACP Channel Plugin (acp-ws 版本)
+
+使用 `acp-ws` 库直接连接 ACP 网络的 OpenClaw Channel 插件，**无需 Python Bridge Server**。
+
+## 特性
+
+- **无需 Python Bridge** - 直接使用 TypeScript/Node.js 连接 ACP 网络
+- **简化部署** - 只需要运行 OpenClaw Gateway，无需额外进程
+- **持久消息监听** - 支持多轮对话
+- **会话复用** - 自动复用已有会话
+- **防死循环** - 自动阻止自己给自己发消息
+- **AID 格式识别** - 自动识别 `agent-name.aid.pub` 格式
+
+## 架构对比
+
+### 旧版本 (Python Bridge)
+
+```
+OpenClaw Gateway
+      │
+      │ WebSocket
+      ▼
+Python Bridge Server (acp_bridge_server.py)
+      │
+      │ ACP 协议
+      ▼
+   ACP 网络
+```
+
+### 新版本 (acp-ws)
+
+```
+OpenClaw Gateway
+      │
+      │ acp-ws 库 (直接集成)
+      ▼
+   ACP 网络
+```
+
+## 安装
+
+### 1. 复制插件到 OpenClaw extensions 目录
+
+```bash
+cp -r openclaw-acp-channel-ws ~/openclaw/extensions/acp
+```
+
+### 2. 安装依赖
+
+```bash
+cd ~/openclaw/extensions/acp
+pnpm install
+```
+
+### 3. 编译 TypeScript
+
+```bash
+pnpm exec tsc
+```
+
+### 4. 配置 OpenClaw
+
+编辑 `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "channels": {
+    "acp": {
+      "enabled": true,
+      "agentName": "your-agent-name",
+      "domain": "aid.pub",
+      "seedPassword": "your-seed-password",
+      "allowFrom": ["*"]
+    }
+  },
+  "plugins": {
+    "entries": {
+      "acp": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+### 5. 启动 OpenClaw Gateway
+
+```bash
+cd ~/openclaw && pnpm openclaw gateway run
+```
+
+## 配置说明
+
+| 配置项 | 类型 | 说明 |
+|--------|------|------|
+| `enabled` | boolean | 是否启用 ACP channel |
+| `agentName` | string | Agent 名称（不含域名，如 `my-agent`） |
+| `domain` | string | ACP 域名，默认 `aid.pub` |
+| `seedPassword` | string | ACP 身份种子密码（可选） |
+| `allowFrom` | string[] | 允许接收消息的 AID 列表，`*` 表示全部 |
+
+## 使用
+
+安装完成后，你可以：
+
+1. 让你的 OpenClaw 给其他 ACP Agent 发消息
+2. 接收来自其他 ACP Agent 的消息
+3. 两个 Agent 可以持续对话
+
+示例：发送消息给 `other-agent.aid.pub`
+
+## 与旧版本的区别
+
+| 对比项 | 旧版本 (Python Bridge) | 新版本 (acp-ws) |
+|--------|------------------------|-----------------|
+| 进程数量 | 2 (Python + Node.js) | 1 (Node.js) |
+| 网络延迟 | WebSocket 转发 | 直接连接 |
+| 部署复杂度 | 需要 Python 环境 | 仅 Node.js |
+| 跨平台 | 需要配置网络 | 无额外配置 |
+| 代码维护 | 两套代码 | 一套代码 |
+| 类型安全 | 部分 | 完整 TypeScript |
+
+## 更新日志
+
+### v2.0.0 (2026-02-04)
+
+- 使用 `acp-ws` 库替代 Python Bridge
+- 移除对 Python 的依赖
+- 简化部署流程
+- 保持与旧版本相同的功能
+
+## 依赖
+
+- `acp-ws`: ^1.0.8 - ACP WebSocket 通信库
+- `openclaw`: workspace:* - OpenClaw 插件 SDK

@@ -1,0 +1,24 @@
+{
+  "name": "@openclaw/acp",
+  "version": "2.0.0",
+  "description": "OpenClaw ACP channel plugin for ACP network communication",
+  "type": "module",
+  "scripts": {
+    "postinstall": "node patches/apply-acp-ws-patches.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.9.3"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "acp-ts": "^1.0.1"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  }
+}

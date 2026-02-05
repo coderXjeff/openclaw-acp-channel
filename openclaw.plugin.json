@@ -1,0 +1,9 @@
+{
+  "id": "acp",
+  "channels": ["acp"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
