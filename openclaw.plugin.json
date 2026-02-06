@@ -1,6 +1,7 @@
 {
   "id": "acp",
   "channels": ["acp"],
+  "skills": ["./skill"],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
