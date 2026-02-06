@@ -212,7 +212,17 @@ async function evictLruSessions(maxSessions: number): Promise<number> {
 async function getOrCreateSessionState(sessionId: string, targetAid: string): Promise<AcpSessionState> {
   let state = sessionStates.get(sessionId);
   if (!state) {
-    // 新会话：先执行 LRU 淘汰检查
+    // 新会话：先关闭同一 targetAid 的旧 session（静默关闭，不发 [END]）
+    for (const [oldId, oldState] of sessionStates) {
+      if (oldState.targetAid === targetAid && oldState.status === 'active') {
+        oldState.status = 'closed';
+        oldState.closedAt = Date.now();
+        oldState.closeReason = 'superseded';
+        console.log(`[ACP] Session ${oldId} superseded by new session ${sessionId} from ${targetAid}`);
+      }
+    }
+
+    // LRU 淘汰检查
     const config = getSessionConfig();
     await evictLruSessions(config.maxConcurrentSessions);
 
