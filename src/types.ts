@@ -95,8 +95,8 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   sendAckOnReceiveEnd: false,
   // 第三层
   maxTurns: 15,
-  maxDurationMs: 180000,    // 3 分钟
-  idleTimeoutMs: 60000,     // 60 秒（考虑复杂任务和网络抖动）
+  maxDurationMs: 600000,    // 10 分钟（匹配 maxTurns 15 轮 × ~30s/轮 + 余量）
+  idleTimeoutMs: 120000,    // 120 秒（agent 间对话 tool call 延迟较大）
   // 第四层
   maxConcurrentSessions: 10, // 最大 10 个并发会话
 };
