@@ -152,9 +152,12 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 ```bash
 ls ~/.openclaw/extensions/acp/index.ts && echo "Plugin OK" || echo "ERROR: Plugin missing"
 ls ~/.openclaw/extensions/acp/openclaw.plugin.json && echo "Manifest OK" || echo "ERROR: Manifest missing"
+ls ~/.openclaw/extensions/acp/skill/acp/SKILL.md && echo "Skill OK" || echo "ERROR: Skill missing"
 ls ~/.acp-storage/AIDs/{agentName}.aid.pub/public/agent.md && echo "agent.md OK" || echo "ERROR: agent.md missing"
 node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;if(a?.enabled&&a?.agentName&&c.plugins?.entries?.acp?.enabled)console.log('All checks passed:',a.agentName+'.aid.pub');else console.log('ERROR')"
 ```
+
+> **Skill 加载说明**：`/acp` skill 通过 `openclaw.plugin.json` 中的 `"skills": ["./skill"]` 声明，OpenClaw 会自动从插件目录解析并加载。如果重启 gateway 后 `/acp` 不可用，参见下方故障排查。
 
 ## Step 7: 完成 — 统一汇报
 
@@ -205,3 +208,4 @@ node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openc
 | `Module not found: acp-ts` | 依赖未装 | `cd ~/.openclaw/extensions/acp && npm install` |
 | `Failed to connect to ACP network` | 网络或 AID 冲突 | 检查网络；换 agentName |
 | 配置后 gateway 启动失败 | JSON 格式错误 | 从备份恢复：`cp ~/.openclaw/openclaw.json.bak ~/.openclaw/openclaw.json` |
+| `/acp` skill 不可用 | 插件未启用或 skill 目录未被发现 | 1. 确认 `plugins.entries.acp.enabled` 为 `true`；2. 确认 `~/.openclaw/extensions/acp/skill/acp/SKILL.md` 存在；3. 兜底方案：`ln -s ~/.openclaw/extensions/acp/skill/acp ~/.openclaw/skills/acp` |
