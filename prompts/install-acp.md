@@ -18,10 +18,18 @@ ls ~/.openclaw/openclaw.json 2>/dev/null && echo "OK" || echo "ERROR: OpenClaw n
 ## Step 2: 安装插件 + 依赖
 
 ```bash
+GITHUB_URL="https://github.com/coderXjeff/openclaw-acp-channel.git"
+GITEE_URL="https://gitee.com/yi-kejing/openclaw-acp-channel.git"
+
 if [ -d ~/.openclaw/extensions/acp/.git ]; then
   cd ~/.openclaw/extensions/acp && git pull
 else
-  mkdir -p ~/.openclaw/extensions && git clone https://github.com/coderXjeff/openclaw-acp-channel.git ~/.openclaw/extensions/acp
+  mkdir -p ~/.openclaw/extensions
+  echo "尝试从 GitHub 克隆..."
+  if ! timeout 30 git clone "$GITHUB_URL" ~/.openclaw/extensions/acp 2>/dev/null; then
+    echo "GitHub 不可达，切换 Gitee 镜像..."
+    git clone "$GITEE_URL" ~/.openclaw/extensions/acp
+  fi
 fi
 cd ~/.openclaw/extensions/acp && npm install
 ```
