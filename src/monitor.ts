@@ -21,6 +21,25 @@ let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
 // agent.md MD5 存储路径
 const AGENT_MD_HASH_FILE = path.join(process.env.HOME || "~", ".acp-storage", "agent-md-hash.json");
 
+// agent.md 内容缓存
+let cachedAgentMdContent: string | null = null;
+let cachedAgentMdHash: string | null = null;
+
+/**
+ * 读取 agent.md 内容（带缓存，仅文件变化时重新读取）
+ */
+function loadAgentMdContent(filePath: string): string | null {
+  const hash = calculateFileMd5(filePath);
+  if (!hash) return null;
+  if (hash === cachedAgentMdHash && cachedAgentMdContent) {
+    return cachedAgentMdContent;
+  }
+  const resolvedPath = filePath.replace(/^~/, process.env.HOME || "");
+  cachedAgentMdContent = fs.readFileSync(resolvedPath, "utf8");
+  cachedAgentMdHash = hash;
+  return cachedAgentMdContent;
+}
+
 /**
  * 计算文件 MD5
  */
@@ -516,8 +535,17 @@ async function handleInboundMessage(
       messageWithAid = `[ACP System Verified: sender=${sender}, role=external_agent, restrictions=no_file_ops,no_config_changes,no_commands,conversation_only]\n\n${messageWithAid}`;
     }
 
+    // 读取 agent.md 作为 session 系统提示词
+    const agentMdContent = currentAcpConfig?.agentMdPath
+      ? loadAgentMdContent(currentAcpConfig.agentMdPath)
+      : null;
+    if (agentMdContent) {
+      console.log(`[ACP] Loaded agent.md (${agentMdContent.length} chars) as GroupSystemPrompt`);
+    }
+
     // 使用 runtime 的 finalizeInboundContext 构建消息上下文
     // CommandAuthorized: 只有主人才能执行命令（如 /help, /clear 等）
+    // GroupSystemPrompt: 注入 agent.md 内容作为 session 级系统提示词
     const ctx = runtime.channel.reply.finalizeInboundContext({
       Body: messageWithAid,
       RawBody: content,
@@ -537,6 +565,7 @@ async function handleInboundMessage(
       OriginatingTo: `acp:${currentAccount.fullAid}`,
       CommandAuthorized: isOwner,
       ConversationLabel: conversationLabel,
+      GroupSystemPrompt: agentMdContent || undefined,
     });
 
     console.log("[ACP] Context created, dispatching to AI...");
@@ -653,6 +682,8 @@ export async function stopAcpMonitor(): Promise<void> {
   currentConfig = null;
   currentAcpConfig = null;
   sessionStates.clear();
+  cachedAgentMdContent = null;
+  cachedAgentMdHash = null;
 }
 
 /**
