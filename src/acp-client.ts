@@ -284,12 +284,8 @@ export class AcpClient {
 
     const aws = this.manager.aws();
 
-    if (session.identifyingCode) {
-      aws.send(content, session.targetAid, sessionId, session.identifyingCode);
-    } else {
-      console.log(`[ACP-TS] No identifyingCode, creating new session`);
-      await this.sendMessage(session.targetAid, content);
-    }
+    // send() 协议层不依赖 identifyingCode，有 sessionId 即可在原 session 内回复
+    aws.send(content, session.targetAid, sessionId, session.identifyingCode || "");
   }
 
   /**
