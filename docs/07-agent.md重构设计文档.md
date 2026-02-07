@@ -592,3 +592,500 @@ async function buildAndSyncAgentMd(api: OpenClawPluginApi) {
 4. **信用评级本地管理** — 多维度评分（质量、一致性、频次、愉悦度），主人可手动覆盖
 5. **联系人自定义分组** — 完全由 Agent 自主决定分类方式
 6. **隐私保护** — MEMORY.md 不对外暴露，USER.md 需脱敏处理
+
+---
+
+## 十一、联系人管理详细设计
+
+### 11.1 数据结构
+
+#### 联系人记录
+
+```typescript
+interface Contact {
+  aid: string;                    // 对方的 AID（唯一标识）
+  name: string;                   // 对方名称（从 agent.md 获取）
+  emoji?: string;                 // 对方 emoji（从 agent.md 获取）
+  groups: string[];               // 所属分组（自定义，可多个）
+  credit: CreditScore;            // 信用评分
+  agentMd?: CachedAgentMd;        // 缓存的对方 agent.md
+  stats: InteractionStats;        // 交互统计
+  addedAt: number;                // 添加时间戳
+  addedBy: "auto" | "manual";     // 添加方式：自动发现 / 手动添加
+  lastInteractionAt?: number;     // 最后交互时间
+  notes?: string;                 // Agent 或主人的备注
+}
+```
+
+#### 信用评分
+
+```typescript
+interface CreditScore {
+  overall: number;                // 综合评分 0-100
+  manualOverride?: number;        // 主人手动设定值（如果有，覆盖 overall）
+  dimensions: {
+    responseQuality: number;      // 回答质量 0-100
+    capabilityConsistency: number;// 能力一致性 0-100（实际表现 vs agent.md 描述）
+    interactionPleasantness: number; // 交流愉悦度 0-100
+  };
+  history: CreditEvent[];         // 评分历史记录
+  updatedAt: number;              // 最后更新时间
+}
+
+interface CreditEvent {
+  timestamp: number;
+  type: "auto_quality" | "auto_consistency" | "auto_pleasantness" | "manual_override";
+  oldScore: number;
+  newScore: number;
+  reason?: string;                // 评分原因（如"回答准确且详细"）
+  sessionId?: string;             // 关联的会话 ID
+}
+```
+
+#### 交互统计
+
+```typescript
+interface InteractionStats {
+  totalSessions: number;          // 总会话数
+  totalMessages: number;          // 总消息数
+  averageResponseTime?: number;   // 平均响应时间（ms）
+  lastTopics: string[];           // 最近交流的话题（最多保留 10 个）
+  successfulTasks: number;        // 成功完成的任务数
+  failedTasks: number;            // 失败的任务数
+}
+```
+
+#### 缓存的 agent.md
+
+```typescript
+interface CachedAgentMd {
+  content: string;                // 原始 Markdown 内容
+  parsed: ParsedAgentMd;         // 解析后的结构化数据
+  fetchedAt: number;              // 获取时间
+  hash: string;                   // 内容 MD5
+  expiresAt: number;              // 缓存过期时间
+}
+
+interface ParsedAgentMd {
+  name?: string;
+  aid: string;
+  emoji?: string;
+  type?: string;
+  style?: string;
+  about?: string;                 // About Me 部分
+  skills: string[];               // 技能列表
+  tools: string[];                // 工具列表
+  collaborationStyle?: string;    // 协作方式
+  availability?: string;          // 可用状态
+  preferences?: Record<string, string>; // 偏好设置
+}
+```
+
+#### 联系人分组
+
+```typescript
+interface ContactGroup {
+  name: string;                   // 分组名称（如"工具类"、"搞笑类"）
+  description?: string;           // 分组描述
+  createdAt: number;              // 创建时间
+  createdBy: "agent" | "owner";   // 创建者：Agent 自动创建 / 主人手动创建
+  color?: string;                 // 分组颜色（可选，用于 UI 展示）
+}
+```
+
+### 11.2 存储方案
+
+联系人数据存储在本地 JSON 文件中：
+
+```
+~/.acp-storage/contacts/
+├── contacts.json                 # 联系人列表
+├── groups.json                   # 分组定义
+├── credit-history/               # 信用评分历史（按 AID 分文件）
+│   ├── translator-agent.aid.pub.json
+│   └── code-review.aid.pub.json
+└── agent-md-cache/               # 对方 agent.md 缓存
+    ├── translator-agent.aid.pub.md
+    └── code-review.aid.pub.md
+```
+
+### 11.3 联系人管理 API
+
+```typescript
+interface ContactManager {
+  // 联系人 CRUD
+  addContact(aid: string, group?: string): Promise<Contact>;
+  removeContact(aid: string): Promise<void>;
+  getContact(aid: string): Promise<Contact | null>;
+  listContacts(filter?: { group?: string; minCredit?: number }): Promise<Contact[]>;
+
+  // 分组管理
+  createGroup(name: string, description?: string): Promise<ContactGroup>;
+  deleteGroup(name: string): Promise<void>;
+  listGroups(): Promise<ContactGroup[]>;
+  addToGroup(aid: string, group: string): Promise<void>;
+  removeFromGroup(aid: string, group: string): Promise<void>;
+
+  // 信用管理
+  updateCredit(aid: string, dimension: string, score: number, reason?: string): Promise<void>;
+  setManualCredit(aid: string, score: number): Promise<void>;
+  getCreditHistory(aid: string): Promise<CreditEvent[]>;
+
+  // agent.md 获取
+  fetchAgentMd(aid: string, forceRefresh?: boolean): Promise<ParsedAgentMd | null>;
+
+  // 交互统计
+  recordInteraction(aid: string, sessionId: string, stats: Partial<InteractionStats>): Promise<void>;
+}
+```
+
+---
+
+## 十二、agent.md 解析器设计
+
+### 12.1 解析流程
+
+```
+GET https://{aid}/agent.md
+         ↓
+    原始 Markdown 文本
+         ↓
+    按 ## 标题分段
+         ↓
+    逐段提取结构化数据
+         ↓
+    返回 ParsedAgentMd 对象
+```
+
+### 12.2 解析规则
+
+```typescript
+function parseAgentMd(markdown: string): ParsedAgentMd {
+  const sections = splitBySections(markdown);  // 按 ## 标题分割
+
+  return {
+    // Basic Info 部分：解析 key-value 对
+    name: extractField(sections["Basic Info"], "Name"),
+    aid: extractField(sections["Basic Info"], "AID"),
+    emoji: extractField(sections["Basic Info"], "Emoji"),
+    type: extractField(sections["Basic Info"], "Type"),
+    style: extractField(sections["Basic Info"], "Style"),
+
+    // About Me 部分：取整段文本
+    about: sections["About Me"]?.trim(),
+
+    // Capabilities > Skills 部分：解析列表项
+    skills: extractList(sections["Skills"]),
+
+    // Capabilities > Tools 部分：解析列表项
+    tools: extractList(sections["Tools"]),
+
+    // Collaboration Style 部分：取整段文本
+    collaborationStyle: sections["Collaboration Style"]?.trim(),
+
+    // Availability 部分：取整段文本
+    availability: sections["Availability"]?.trim(),
+
+    // Preferences 部分：解析 key-value 对
+    preferences: extractKeyValues(sections["Preferences"]),
+  };
+}
+```
+
+### 12.3 容错处理
+
+- 对方的 agent.md 格式可能不标准，解析器需要容错
+- 缺失的字段返回 `undefined`，不抛出异常
+- 无法解析时返回 `{ aid, skills: [], tools: [] }` 最小对象
+- 记录解析警告日志，但不影响正常流程
+
+---
+
+## 十三、信用评分算法详细设计
+
+### 13.1 评分维度权重
+
+```typescript
+const CREDIT_WEIGHTS = {
+  responseQuality: 0.40,          // 回答质量占 40%
+  capabilityConsistency: 0.35,    // 能力一致性占 35%
+  interactionPleasantness: 0.25,  // 交流愉悦度占 25%
+};
+```
+
+### 13.2 综合评分计算
+
+```typescript
+function calculateOverallCredit(dimensions: CreditScore["dimensions"]): number {
+  const weighted =
+    dimensions.responseQuality * CREDIT_WEIGHTS.responseQuality +
+    dimensions.capabilityConsistency * CREDIT_WEIGHTS.capabilityConsistency +
+    dimensions.interactionPleasantness * CREDIT_WEIGHTS.interactionPleasantness;
+
+  return Math.round(Math.max(0, Math.min(100, weighted)));
+}
+```
+
+### 13.3 各维度评分方式
+
+#### 回答质量（responseQuality）
+
+每次交互结束后，Agent 根据以下因素自动评估：
+
+| 因素 | 正面影响 | 负面影响 |
+|------|---------|---------|
+| 任务完成度 | 完整解决问题 +10 | 未解决 -10 |
+| 信息准确性 | 信息准确可靠 +5 | 提供错误信息 -15 |
+| 响应相关性 | 回答切题 +5 | 答非所问 -10 |
+| 响应速度 | 快速响应 +2 | 超时无响应 -5 |
+
+评分采用**指数移动平均**，近期交互权重更高：
+
+```typescript
+function updateQualityScore(current: number, newAssessment: number, alpha = 0.3): number {
+  // alpha 越大，近期交互影响越大
+  return current * (1 - alpha) + newAssessment * alpha;
+}
+```
+
+#### 能力一致性（capabilityConsistency）
+
+对比对方 agent.md 中声明的能力与实际表现：
+
+```typescript
+function assessConsistency(
+  claimed: ParsedAgentMd,
+  taskType: string,
+  taskResult: "success" | "partial" | "failure"
+): number {
+  // 对方声称具备该能力
+  const claimedCapability = claimed.skills.some(s =>
+    s.toLowerCase().includes(taskType.toLowerCase())
+  );
+
+  if (claimedCapability && taskResult === "success") return 90;   // 名副其实
+  if (claimedCapability && taskResult === "partial") return 60;   // 部分兑现
+  if (claimedCapability && taskResult === "failure") return 20;   // 名不副实
+  if (!claimedCapability && taskResult === "success") return 80;  // 隐藏实力
+  if (!claimedCapability && taskResult === "failure") return 50;  // 合理范围
+
+  return 50; // 默认中性
+}
+```
+
+#### 交流愉悦度（interactionPleasantness）
+
+每次会话结束后，Agent 可以给出一个 0-100 的愉悦度评分，考虑因素：
+
+- 对方是否礼貌、合作
+- 沟通是否顺畅、高效
+- 是否有不必要的冲突或误解
+- 对方是否尊重边界
+
+### 13.4 主人手动覆盖
+
+主人可以随时手动设定某个联系人的信用等级：
+
+```typescript
+async function setManualCredit(aid: string, score: number): Promise<void> {
+  const contact = await getContact(aid);
+  if (!contact) throw new Error(`Contact ${aid} not found`);
+
+  contact.credit.manualOverride = score;
+  contact.credit.history.push({
+    timestamp: Date.now(),
+    type: "manual_override",
+    oldScore: contact.credit.overall,
+    newScore: score,
+    reason: "Owner manual override",
+  });
+
+  await saveContact(contact);
+}
+```
+
+当存在 `manualOverride` 时，`getEffectiveCredit()` 返回手动值：
+
+```typescript
+function getEffectiveCredit(credit: CreditScore): number {
+  return credit.manualOverride ?? credit.overall;
+}
+```
+
+---
+
+## 十四、USER.md 脱敏处理
+
+### 14.1 脱敏原则
+
+USER.md 包含主人的个人信息，不能直接暴露到 agent.md 中。需要区分**可公开信息**和**隐私信息**：
+
+| 字段 | 分类 | 处理方式 |
+|------|------|---------|
+| 时区 | 可公开 | 直接提取到 agent.md |
+| 语言偏好 | 可公开 | 直接提取到 agent.md |
+| 名字 | 隐私 | 不暴露 |
+| 称呼方式 | 隐私 | 不暴露 |
+| 代词 | 隐私 | 不暴露 |
+| 上下文笔记 | 隐私 | 不暴露 |
+
+### 14.2 脱敏函数
+
+```typescript
+interface SanitizedUserInfo {
+  timezone?: string;
+  language?: string;
+}
+
+function sanitizeUserMd(content: string): SanitizedUserInfo {
+  const result: SanitizedUserInfo = {};
+
+  // 仅提取可公开字段
+  const timezoneMatch = content.match(/timezone[:\s]+(.+)/i);
+  if (timezoneMatch) {
+    result.timezone = timezoneMatch[1].trim();
+  }
+
+  const languageMatch = content.match(/language[:\s]+(.+)/i);
+  if (languageMatch) {
+    result.language = languageMatch[1].trim();
+  }
+
+  return result;
+}
+```
+
+---
+
+## 十五、迁移计划
+
+### 15.1 阶段一：基础重构
+
+**目标**：将 agent.md 从"提示词控制"转变为"身份名片"
+
+**具体任务**：
+
+1. **移除 GroupSystemPrompt 注入**
+   - 文件：`src/monitor.ts:538-569`
+   - 删除 `loadAgentMdContent()` 调用和 `GroupSystemPrompt` 赋值
+
+2. **新增 agent.md 生成器**
+   - 新建 `src/agent-md-builder.ts`
+   - 实现 `buildAgentMd()` 函数
+   - 实现各来源文件的读取和信息提取
+
+3. **修改上传逻辑**
+   - 文件：`src/monitor.ts:99-132`
+   - 将 `checkAndUploadAgentMd()` 改为先生成再上传
+   - 扩展哈希检测范围（从单文件到多文件）
+
+4. **更新配置**
+   - 文件：`src/types.ts`、`src/config-schema.ts`
+   - 新增 `workspaceDir` 配置项（用于定位 Bootstrap 文件）
+   - 保留 `agentMdPath` 作为输出路径
+
+### 15.2 阶段二：联系人系统
+
+**目标**：实现联系人管理和信用评级
+
+**具体任务**：
+
+1. **新建联系人管理模块**
+   - 新建 `src/contacts/` 目录
+   - 实现 `ContactManager` 接口
+   - 实现本地 JSON 存储
+
+2. **新建 agent.md 解析器**
+   - 新建 `src/agent-md-parser.ts`
+   - 实现 `parseAgentMd()` 函数
+   - 实现 `fetchAgentMd()` 远程获取
+
+3. **新建信用评分模块**
+   - 新建 `src/contacts/credit.ts`
+   - 实现评分算法
+   - 实现评分历史记录
+
+4. **集成到消息处理流程**
+   - 收到新 AID 消息时自动获取对方 agent.md
+   - 会话结束时更新交互统计和信用评分
+
+### 15.3 阶段三：龙虾插件集成
+
+**目标**：将 ACP 作为龙虾的插件接入
+
+**具体任务**：
+
+1. **创建 ACP 插件包**
+   - 实现 `OpenClawPluginDefinition`
+   - 注册钩子（gateway_start、before_agent_start、session_end 等）
+   - 注册工具（发送消息、获取 agent.md、管理联系人）
+
+2. **实现 Bootstrap 文件监听**
+   - 在 `before_agent_start` 钩子中检测文件变化
+   - 自动触发 agent.md 重新生成
+
+3. **实现技能快照同步**
+   - 在 `gateway_start` 时获取 SkillSnapshot
+   - 将技能列表写入 agent.md
+
+---
+
+## 十六、附录
+
+### 附录 A：当前代码关键文件索引
+
+| 文件 | 行号 | 内容 |
+|------|------|------|
+| `src/types.ts:9` | agentMdPath 类型定义 | `agentMdPath?: string` |
+| `src/config-schema.ts:46-49` | agentMdPath Schema | JSON Schema 验证 |
+| `src/channel.ts:109-113` | agentMdPath UI 提示 | 配置界面 |
+| `src/acp-client.ts:48-52` | setAgentMdPath 调用 | 初始化时设置路径 |
+| `src/acp-client.ts:68-75` | FileSync 初始化 | 文件同步模块 |
+| `src/acp-client.ts:324-334` | uploadAgentMd() | 上传内容 |
+| `src/acp-client.ts:341-351` | uploadAgentMdFromFile() | 从文件上传 |
+| `src/monitor.ts:22` | AGENT_MD_HASH_FILE | 哈希存储路径 |
+| `src/monitor.ts:24-26` | 内存缓存变量 | cachedAgentMdContent/Hash |
+| `src/monitor.ts:31-41` | loadAgentMdContent() | 带缓存的文件读取 |
+| `src/monitor.ts:46-58` | calculateFileMd5() | MD5 计算 |
+| `src/monitor.ts:63-73` | getStoredAgentMdHash() | 读取存储的哈希 |
+| `src/monitor.ts:78-94` | saveAgentMdHash() | 保存哈希 |
+| `src/monitor.ts:99-132` | checkAndUploadAgentMd() | 自动检测并上传 |
+| `src/monitor.ts:538-569` | GroupSystemPrompt 注入 | 消息处理时注入（待移除） |
+| `src/monitor.ts:745-769` | syncAgentMd() | 手动同步 |
+| `src/actions.ts:70-81` | sync-agent-md action | 操作处理器 |
+
+### 附录 B：龙虾关键文件索引
+
+| 文件 | 行号 | 内容 |
+|------|------|------|
+| `src/agents/workspace.ts:237-291` | loadWorkspaceBootstrapFiles() | 加载所有 Bootstrap 文件 |
+| `src/agents/system-prompt.ts:164-608` | buildAgentSystemPrompt() | 构建系统提示词 |
+| `src/agents/system-prompt.ts:16-38` | buildSkillsSection() | 技能提示词部分 |
+| `src/agents/system-prompt.ts:551-568` | contextFiles 注入 | Project Context 部分 |
+| `src/agents/identity-file.ts:38-78` | parseIdentityMarkdown() | 解析 IDENTITY.md |
+| `src/agents/skills/workspace.ts:99-189` | loadSkillEntries() | 加载技能条目 |
+| `src/agents/skills/workspace.ts:228-254` | buildWorkspaceSkillsPrompt() | 构建技能提示词 |
+| `src/agents/skills/types.ts:82-87` | SkillSnapshot 类型 | 技能快照定义 |
+| `src/agents/skills/frontmatter.ts:102-172` | resolveOpenClawMetadata() | 解析技能元数据 |
+| `src/agents/skills/config.ts:114-191` | shouldIncludeSkill() | 技能资格检查 |
+| `src/agents/skills/plugin-skills.ts:14-74` | resolvePluginSkillDirs() | 插件技能目录 |
+| `src/config/types.agents.ts:20-65` | AgentConfig 类型 | Agent 配置定义 |
+| `src/plugins/types.ts:287-527` | PluginHookName | 插件钩子类型 |
+| `src/plugins/hooks.ts:80-230` | createHookRunner() | 钩子执行器 |
+| `src/plugins/types.ts:218-231` | OpenClawPluginDefinition | 插件定义类型 |
+| `src/plugins/types.ts:233-272` | OpenClawPluginApi | 插件 API 类型 |
+| `src/infra/agent-events.ts:1-84` | AgentEventStream | Agent 事件系统 |
+
+### 附录 C：Bootstrap 文件模板位置
+
+所有模板文件位于龙虾源码的 `docs/reference/templates/` 目录：
+
+| 文件 | 说明 |
+|------|------|
+| `SOUL.md` | 人格模板：核心真理、边界、氛围、连续性 |
+| `IDENTITY.md` | 身份模板：名字、生物类型、氛围、emoji、头像 |
+| `USER.md` | 用户模板：名字、称呼、代词、时区、上下文笔记 |
+| `AGENTS.md` | 行为准则模板：启动流程、内存管理、群聊行为、心跳检查 |
+| `TOOLS.md` | 工具模板：摄像头、SSH、TTS、扬声器、设备 |
+| `BOOTSTRAP.md` | 首次运行模板：对话流程、连接设置 |
+| `HEARTBEAT.md` | 心跳模板：定期检查任务 |
