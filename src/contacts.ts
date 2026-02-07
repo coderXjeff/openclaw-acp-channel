@@ -144,6 +144,34 @@ export class ContactManager {
     this.save();
   }
 
+  /** 记录会话评分（将单次评分融入累积信用分） */
+  recordSessionRating(aid: string, sessionScore: number, aiSummary?: string): void {
+    const c = this.contacts.get(aid);
+    if (!c) return;
+
+    // 手动覆盖时跳过自动更新
+    if (c.creditManualOverride != null) return;
+
+    // 加权融合：累积分 * 0.7 + 本次评分 * 0.3
+    c.creditScore = Math.round(
+      Math.max(0, Math.min(c.creditScore * 0.7 + sessionScore * 0.3, 100)),
+    );
+
+    // 可选：将 AI 摘要追加到 notes（限制 500 字符）
+    if (aiSummary) {
+      const timestamp = new Date().toISOString().substring(0, 10);
+      const entry = `[${timestamp}] ${aiSummary}`;
+      if (c.notes) {
+        c.notes = `${entry}\n${c.notes}`.substring(0, 500);
+      } else {
+        c.notes = entry.substring(0, 500);
+      }
+    }
+
+    c.updatedAt = Date.now();
+    this.save();
+  }
+
   /** 持久化到 JSON 文件（原子写入） */
   private save(): void {
     try {

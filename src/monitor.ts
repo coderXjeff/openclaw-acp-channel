@@ -10,6 +10,7 @@ import { getWorkspaceDir } from "./workspace.js";
 import { getAgentMdFetcher } from "./agent-md-fetcher.js";
 import { getContactManager } from "./contacts.js";
 import { shouldRejectByCredit } from "./credit.js";
+import { rateSession } from "./session-rating.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -340,6 +341,13 @@ async function closeSession(state: AcpSessionState, reason: string, sendEndMarke
   const durationMs = state.closedAt - state.createdAt;
   const success = !['max_turns', 'max_duration', 'lru_evicted'].some(r => reason.startsWith(r));
   contacts.recordSessionClose(state.targetAid, success, durationMs);
+
+  // 会话评分（异步，不阻塞结束标记发送）
+  if (currentConfig) {
+    rateSession(state, currentConfig).catch(err => {
+      console.error(`[ACP] Session rating failed:`, err);
+    });
+  }
 
   // 发送结束标记（如果配置了）
   if (sendEndMarker && acpClient?.connected) {
