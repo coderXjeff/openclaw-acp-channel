@@ -7,6 +7,8 @@ import { acpChannelPlugin } from "./src/channel.js";
 import { setAcpRuntime } from "./src/runtime.js";
 import { updateWorkspaceDir } from "./src/workspace.js";
 import { checkAndUploadAgentMd } from "./src/monitor.js";
+import { createFetchAgentMdTool, createManageContactsTool } from "./src/tools.js";
+import { createSyncCommand, createStatusCommand } from "./src/commands.js";
 
 const plugin = {
   id: "acp",
@@ -31,6 +33,24 @@ const plugin = {
         await checkAndUploadAgentMd();
       }
     });
+
+    // 钩子：gateway 停止时记录日志
+    api.on("gateway_stop", (_event, _ctx) => {
+      console.log("[ACP] Gateway stopped");
+    });
+
+    // 钩子：session 结束（框架未实际触发，注册以备未来生效）
+    api.on("session_end", async (event, _ctx) => {
+      console.log(`[ACP] session_end hook: ${(event as any).sessionId ?? "unknown"}`);
+    });
+
+    // 注册 AI 工具
+    api.registerTool(createFetchAgentMdTool(), { names: ["acp_fetch_agent_md"] });
+    api.registerTool(createManageContactsTool(), { names: ["acp_manage_contacts"] });
+
+    // 注册用户命令
+    api.registerCommand(createSyncCommand());
+    api.registerCommand(createStatusCommand());
 
     console.log("[ACP] ACP channel plugin registered (gateway lifecycle managed by framework)");
   },
