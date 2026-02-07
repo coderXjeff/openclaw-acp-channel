@@ -101,3 +101,23 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   // 第四层
   maxConcurrentSessions: 10, // 最大 10 个并发会话
 };
+
+/** 解析后的远程 agent.md */
+export interface ParsedAgentMd {
+  // YAML frontmatter 字段
+  aid: string;
+  name: string;
+  type?: string;
+  version?: string;
+  description?: string;
+  tags?: string[];
+
+  // Markdown 正文提取
+  aboutMe?: string;
+  capabilities?: string[];
+  interests?: string[];
+
+  // 元数据
+  raw: string;
+  fetchedAt: number;
+}
