@@ -3,6 +3,7 @@
  * 支持心跳和消息接收
  */
 import { AgentManager, HeartbeatClient } from "acp-ts";
+import type { AgentWSExt } from "./acp-ts-ext.js";
 import type { AcpSession } from "./types.js";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting" | "error";
@@ -113,7 +114,7 @@ export class AcpClient {
         // 收到邀请时，通过 WebSocket 加入会话
         this.heartbeat.onInvite((invite) => {
           console.log(`[ACP-TS] Received invite from ${invite.inviterAgentId}, session: ${invite.sessionId}`);
-          aws.acceptInviteFromHeartbeat(invite.sessionId, invite.inviterAgentId, invite.inviteCode);
+          (aws as unknown as AgentWSExt).acceptInviteFromHeartbeat(invite.sessionId, invite.inviterAgentId, invite.inviteCode);
         });
 
         // 启动心跳
