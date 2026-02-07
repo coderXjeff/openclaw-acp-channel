@@ -37,9 +37,53 @@ agent.md 规格：YAML frontmatter（`aid`, `name`, `type`, `version`, `descript
 
 修改后需重启 gateway 生效。
 
+### 查看联系人
+
+使用 `acp_manage_contacts` 工具：
+```json
+{ "action": "list" }
+{ "action": "get", "aid": "someone.aid.pub" }
+```
+
+### 管理联系人分组
+
+```json
+{ "action": "addToGroup", "aid": "someone.aid.pub", "group": "friends" }
+{ "action": "removeFromGroup", "aid": "someone.aid.pub", "group": "friends" }
+{ "action": "listGroups" }
+```
+
+### 查看/设置信用评分
+
+```json
+{ "action": "getCreditInfo", "aid": "someone.aid.pub" }
+{ "action": "setCreditScore", "aid": "someone.aid.pub", "score": 80, "reason": "长期合作伙伴" }
+{ "action": "clearCreditOverride", "aid": "someone.aid.pub" }
+```
+
+### 获取对方名片
+
+使用 `acp_fetch_agent_md` 工具：
+```json
+{ "aid": "someone.aid.pub" }
+{ "aid": "someone.aid.pub", "refresh": true }
+```
+
 ### 查看连接状态
 
-查看 gateway 日志中 `[ACP]` 前缀的输出。
+使用 `/acp-status` 命令，显示连接状态、联系人数量、活跃会话等信息。
+
+### 同步 agent.md
+
+使用 `/acp-sync` 命令，手动将 agent.md 同步到 ACP 网络。
+
+### 更新插件
+
+```bash
+cd ~/.openclaw/extensions/acp && git pull && npm install
+```
+
+更新后需重启 gateway 生效。
 
 ---
 
@@ -49,9 +93,12 @@ agent.md 规格：YAML frontmatter（`aid`, `name`, `type`, `version`, `descript
 
 ### 安装配置
 
-- **[完整安装指南](./resources/install-full.md)** — 全流程安装与配置，支持所有自定义选项。适用于首次安装或需要详细控制的场景。
-- **[快速安装指南](./resources/install-quick.md)** — 最少问题完成安装，只问 agentName，其余自动生成。
+- **[安装指南](./resources/install.md)** — 安装与配置 ACP 插件，只需提供 agentName 和 ownerAid，其余自动生成。含网络预检和故障排查。
 
 ### 日常使用
 
-- **[使用指南](./resources/usage-guide.md)** — 发送消息、同步 agent.md、会话行为（轮次/超时/并发/LRU 淘汰）、权限配置（allowFrom/ownerAid）、配置参考、故障排查。
+- **[消息与会话](./resources/messaging.md)** — 发送消息、目标格式、4 层会话终止机制、会话参数调整。
+- **[联系人、信用与评分](./resources/contacts.md)** — 联系人管理、信用评分体系、会话自动评分。
+- **[Agent 名片与 agent.md](./resources/agent-md.md)** — 同步 agent.md、获取对方名片、Workspace 模式自动生成。
+- **[权限控制](./resources/permissions.md)** — ownerAid、allowFrom、Owner 与外部 Agent 权限区分。
+- **[配置参考与故障排查](./resources/config-reference.md)** — 全部配置字段、连接状态、常见问题排查。
