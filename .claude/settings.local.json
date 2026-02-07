@@ -4,7 +4,17 @@
       "Bash(tree:*)",
       "Bash(find:*)",
       "Bash(wc:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "WebSearch",
+      "WebFetch(domain:whitepaper.virtuals.io)",
+      "Bash(test:*)",
+      "Bash(npm install:*)",
+      "Bash(npx vitest:*)",
+      "Bash(git -C /Users/liwenjiang/Desktop/acp-channel log --oneline --all)",
+      "Bash(git -C /Users/liwenjiang/Desktop/acp-channel remote -v)",
+      "Bash(grep:*)",
+      "Bash(git -C /Users/liwenjiang/Desktop/acp-channel config --local --list)"
     ]
   }
 }

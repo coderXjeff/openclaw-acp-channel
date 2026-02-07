@@ -1,6 +1,6 @@
 import type { ChannelMessageActionAdapter, ChannelMessageActionName } from "./plugin-types.js";
 import type { AcpChannelConfig } from "./types.js";
-import { sendAcpMessage } from "./outbound.js";
+import { sendAcpMessage, parseTarget } from "./outbound.js";
 import { syncAgentMd } from "./monitor.js";
 import { getContactManager } from "./contacts.js";
 import { getCreditLevel } from "./credit.js";
@@ -47,7 +47,7 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
     // 添加 sync-agent-md action
     actions.add("sync-agent-md");
     // 添加 manage-contacts action
-    (actions as Set<string>).add("manage-contacts");
+    actions.add("manage-contacts");
     return Array.from(actions);
   },
 
@@ -85,7 +85,7 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
     }
 
     // 处理 manage-contacts action
-    if ((action as string) === "manage-contacts") {
+    if (action === "manage-contacts") {
       const subAction = readStringParam(params, "action", { required: true });
       const contacts = getContactManager();
 
@@ -193,18 +193,7 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
       }
 
       try {
-        // Parse to format: "acp:{targetAid}:{sessionId}" or direct AID
-        const parts = to.split(":");
-        let targetAid: string;
-        let sessionId: string;
-
-        if (parts[0] === "acp" && parts.length >= 3) {
-          targetAid = parts[1];
-          sessionId = parts.slice(2).join(":");
-        } else {
-          targetAid = to;
-          sessionId = "default";
-        }
+        const { targetAid, sessionId } = parseTarget(to);
 
         await sendAcpMessage({
           to: targetAid,

@@ -22,8 +22,8 @@ const plugin = {
     // 保存 runtime 引用
     setAcpRuntime(api.runtime);
 
-    // 注册 channel (使用 any 避免类型冲突)
-    // gateway.startAccount 会由框架在账户启用时自动调用
+    // 注册 channel
+    // TODO: 本地 ChannelPlugin 类型与 SDK 类型未对齐，待 openclaw SDK 导出兼容类型后移除断言
     api.registerChannel({ plugin: acpChannelPlugin as any });
 
     // 通过 before_agent_start 钩子自动发现 workspaceDir 并检查同步

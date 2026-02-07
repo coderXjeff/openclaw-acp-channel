@@ -139,6 +139,7 @@ export class ContactManager {
     } else {
       c.failedSessions++;
     }
+    c.totalDurationMs += durationMs;
     c.creditScore = calculateCreditScore(c);
     c.updatedAt = Date.now();
     this.save();

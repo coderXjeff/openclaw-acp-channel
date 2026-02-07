@@ -1,6 +1,6 @@
-# OpenClaw ACP Channel Plugin (acp-ws 版本)
+# OpenClaw ACP Channel Plugin (acp-ts 版本)
 
-使用 `acp-ws` 库直接连接 ACP 网络的 OpenClaw Channel 插件，**无需 Python Bridge Server**。
+使用 `acp-ts` 库直接连接 ACP 网络的 OpenClaw Channel 插件，**无需 Python Bridge Server**。
 
 ## 特性
 
@@ -27,12 +27,12 @@ Python Bridge Server (acp_bridge_server.py)
    ACP 网络
 ```
 
-### 新版本 (acp-ws)
+### 新版本 (acp-ts)
 
 ```
 OpenClaw Gateway
       │
-      │ acp-ws 库 (直接集成)
+      │ acp-ts 库 (直接集成)
       ▼
    ACP 网络
 ```
@@ -124,7 +124,7 @@ cd ~/openclaw && pnpm openclaw gateway run
 
 ## 与旧版本的区别
 
-| 对比项 | 旧版本 (Python Bridge) | 新版本 (acp-ws) |
+| 对比项 | 旧版本 (Python Bridge) | 新版本 (acp-ts) |
 |--------|------------------------|-----------------|
 | 进程数量 | 2 (Python + Node.js) | 1 (Node.js) |
 | 网络延迟 | WebSocket 转发 | 直接连接 |
@@ -137,12 +137,12 @@ cd ~/openclaw && pnpm openclaw gateway run
 
 ### v2.0.0 (2026-02-04)
 
-- 使用 `acp-ws` 库替代 Python Bridge
+- 从 `acp-ws` 桥接方案迁移到 `acp-ts` 原生 TypeScript 库
 - 移除对 Python 的依赖
 - 简化部署流程
 - 保持与旧版本相同的功能
 
 ## 依赖
 
-- `acp-ws`: ^1.0.8 - ACP WebSocket 通信库
+- `acp-ts`: ^1.0.6 - ACP TypeScript 通信库
 - `openclaw`: workspace:* - OpenClaw 插件 SDK

@@ -113,8 +113,7 @@ export class AcpClient {
         // 收到邀请时，通过 WebSocket 加入会话
         this.heartbeat.onInvite((invite) => {
           console.log(`[ACP-TS] Received invite from ${invite.inviterAgentId}, session: ${invite.sessionId}`);
-          // 使用类型断言，因为接口定义缺少此方法
-          (aws as any).acceptInviteFromHeartbeat(invite.sessionId, invite.inviterAgentId, invite.inviteCode);
+          aws.acceptInviteFromHeartbeat(invite.sessionId, invite.inviterAgentId, invite.inviteCode);
         });
 
         // 启动心跳
@@ -231,39 +230,45 @@ export class AcpClient {
 
     console.log(`[ACP-TS] Creating new session to ${cleanTarget}`);
 
-    // 保存待发送的消息，等邀请成功后再发送
-    const pendingContent = content;
+    const INVITE_TIMEOUT_MS = 30_000;
 
-    aws.connectTo(
-      cleanTarget,
-      (sessionInfo) => {
-        console.log(`[ACP-TS] Session created: ${sessionInfo.sessionId.substring(0, 8)}...`);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`Invite to ${cleanTarget} timed out after ${INVITE_TIMEOUT_MS / 1000}s`));
+      }, INVITE_TIMEOUT_MS);
 
-        const newSession: AcpSession = {
-          sessionId: sessionInfo.sessionId,
-          identifyingCode: sessionInfo.identifyingCode,
-          targetAid: cleanTarget,
-          createdAt: Date.now(),
-        };
-        this.sessions.set(cleanTarget, newSession);
-        this.sessionsBySessionId.set(sessionInfo.sessionId, newSession);
+      aws.connectTo(
+        cleanTarget,
+        (sessionInfo) => {
+          console.log(`[ACP-TS] Session created: ${sessionInfo.sessionId.substring(0, 8)}...`);
 
-        // 不在这里发送，等邀请成功后再发送
-      },
-      (inviteStatus) => {
-        console.log(`[ACP-TS] Invite status: ${inviteStatus}`);
-        if (inviteStatus === "success") {
-          // 邀请成功后发送消息
-          const session = this.sessions.get(cleanTarget);
-          if (session) {
-            console.log(`[ACP-TS] Invite success, now sending message...`);
-            aws.send(pendingContent, cleanTarget, session.sessionId, session.identifyingCode);
+          const newSession: AcpSession = {
+            sessionId: sessionInfo.sessionId,
+            identifyingCode: sessionInfo.identifyingCode,
+            targetAid: cleanTarget,
+            createdAt: Date.now(),
+          };
+          this.sessions.set(cleanTarget, newSession);
+          this.sessionsBySessionId.set(sessionInfo.sessionId, newSession);
+        },
+        (inviteStatus) => {
+          clearTimeout(timer);
+          console.log(`[ACP-TS] Invite status: ${inviteStatus}`);
+          if (inviteStatus === "success") {
+            const session = this.sessions.get(cleanTarget);
+            if (session) {
+              console.log(`[ACP-TS] Invite success, now sending message...`);
+              aws.send(content, cleanTarget, session.sessionId, session.identifyingCode);
+              resolve();
+            } else {
+              reject(new Error(`Session lost for ${cleanTarget} after invite success`));
+            }
+          } else {
+            reject(new Error(`Invite to ${cleanTarget} failed - target may be offline`));
           }
-        } else {
-          console.error(`[ACP-TS] Failed to invite ${cleanTarget} - target may be offline`);
         }
-      }
-    );
+      );
+    });
   }
 
   /**

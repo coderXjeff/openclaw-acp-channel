@@ -1,6 +1,6 @@
 /**
- * Node.js polyfill for browser APIs required by acp-ws
- * This must be imported BEFORE any acp-ws imports
+ * Node.js polyfill for browser APIs required by acp-ts
+ * This must be imported BEFORE any acp-ts imports
  */
 
 import * as fs from "fs";

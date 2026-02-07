@@ -142,20 +142,8 @@ const acpOutboundAdapter = {
     accountId?: string | null;
   }) => {
     try {
-      const { sendAcpMessage } = await import("./outbound.js");
-
-      // 解析 to 格式: "acp:{targetAid}:{sessionId}" 或直接是 AID
-      const parts = ctx.to.split(":");
-      let targetAid: string;
-      let sessionId: string;
-
-      if (parts[0] === "acp" && parts.length >= 3) {
-        targetAid = parts[1];
-        sessionId = parts.slice(2).join(":");
-      } else {
-        targetAid = ctx.to;
-        sessionId = "default";
-      }
+      const { sendAcpMessage, parseTarget } = await import("./outbound.js");
+      const { targetAid, sessionId } = parseTarget(ctx.to);
 
       await sendAcpMessage({
         to: targetAid,

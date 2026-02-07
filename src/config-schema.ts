@@ -1,3 +1,5 @@
+import { DEFAULT_SESSION_CONFIG } from "./types.js";
+
 // JSON Schema 类型（简化版）
 type JSONSchema = {
   type?: string;
@@ -22,7 +24,7 @@ export const acpConfigSchema: JSONSchema = {
     },
     agentName: {
       type: "string",
-      description: "Agent name (without domain, e.g., 'my-agent')",
+      description: "Agent name (without domain, e.g., 'my-agent'). Required when channel is enabled",
       pattern: "^[a-z0-9-]+$",
     },
     domain: {
@@ -69,45 +71,50 @@ export const acpConfigSchema: JSONSchema = {
         endMarkers: {
           type: "array",
           items: { type: "string", minLength: 3 },
-          default: ["[END]", "[GOODBYE]", "[NO_REPLY]"],
+          default: [...DEFAULT_SESSION_CONFIG.endMarkers],
           description: "End markers to detect session termination (min 3 chars each)",
         },
         consecutiveEmptyThreshold: {
           type: "number",
-          default: 2,
+          default: DEFAULT_SESSION_CONFIG.consecutiveEmptyThreshold,
           minimum: 1,
           description: "Number of consecutive empty replies before closing session",
         },
         sendEndMarkerOnClose: {
           type: "boolean",
-          default: true,
+          default: DEFAULT_SESSION_CONFIG.sendEndMarkerOnClose,
           description: "Send end marker when closing session",
         },
         sendAckOnReceiveEnd: {
           type: "boolean",
-          default: false,
+          default: DEFAULT_SESSION_CONFIG.sendAckOnReceiveEnd,
           description: "Send ACK when receiving end marker",
         },
         maxTurns: {
           type: "number",
-          default: 15,
+          default: DEFAULT_SESSION_CONFIG.maxTurns,
           minimum: 1,
           description: "Maximum inbound messages per session",
         },
         maxDurationMs: {
           type: "number",
-          default: 180000,
+          default: DEFAULT_SESSION_CONFIG.maxDurationMs,
           minimum: 1000,
           description: "Maximum session duration in milliseconds",
         },
         idleTimeoutMs: {
           type: "number",
-          default: 60000,
+          default: DEFAULT_SESSION_CONFIG.idleTimeoutMs,
           minimum: 1000,
           description: "Idle timeout in milliseconds",
+        },
+        maxConcurrentSessions: {
+          type: "number",
+          default: DEFAULT_SESSION_CONFIG.maxConcurrentSessions,
+          minimum: 1,
+          description: "Maximum concurrent sessions before LRU eviction",
         },
       },
     },
   },
-  required: ["agentName"],
 };

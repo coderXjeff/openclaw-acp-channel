@@ -250,8 +250,8 @@ describe("ContactManager", () => {
     const c = manager.get("alice.aid.pub")!;
     expect(c.successfulSessions).toBe(1);
     expect(c.failedSessions).toBe(0);
-    // 50 + 0(interaction) + 0(duration) + 1*3(session) = 53
-    expect(c.creditScore).toBe(53);
+    // 50 + 0(interaction) + 1(duration: 60000ms = 1min) + 1*3(session) = 54
+    expect(c.creditScore).toBe(54);
   });
 
   it("recordSessionClose 更新失败会话统计和信用分", () => {
@@ -260,8 +260,8 @@ describe("ContactManager", () => {
     const c = manager.get("alice.aid.pub")!;
     expect(c.successfulSessions).toBe(0);
     expect(c.failedSessions).toBe(1);
-    // 50 + 0 + 0 - 3 = 47
-    expect(c.creditScore).toBe(47);
+    // 50 + 0(interaction) + 1(duration: 60000ms = 1min) - 1*3(session) = 48
+    expect(c.creditScore).toBe(48);
   });
 
   it("recordSessionClose 不存在的 aid 不报错", () => {

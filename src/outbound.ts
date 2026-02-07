@@ -1,6 +1,17 @@
 import { getAcpClient, getCurrentAccount, recordOutbound } from "./monitor.js";
 
 /**
+ * 解析 to 格式: "acp:{targetAid}:{sessionId}" 或直接是 AID
+ */
+export function parseTarget(to: string): { targetAid: string; sessionId: string } {
+  const parts = to.split(":");
+  if (parts[0] === "acp" && parts.length >= 3) {
+    return { targetAid: parts[1], sessionId: parts.slice(2).join(":") };
+  }
+  return { targetAid: to, sessionId: "default" };
+}
+
+/**
  * 发送消息到 ACP 网络
  */
 export async function sendAcpMessage(params: {

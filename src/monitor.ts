@@ -718,21 +718,6 @@ async function handleInboundMessage(
 }
 
 /**
- * 发送消息到 ACP
- */
-export async function sendAcpMessage(params: {
-  to: string;
-  sessionId: string;
-  content: string;
-}): Promise<void> {
-  if (!acpClient?.connected) {
-    throw new Error("ACP client not connected");
-  }
-
-  await acpClient.sendMessage(params.to, params.content);
-}
-
-/**
  * 停止监听
  */
 export async function stopAcpMonitor(): Promise<void> {
@@ -881,11 +866,14 @@ function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
       reject(new DOMException("Aborted", "AbortError"));
       return;
     }
-    const timer = setTimeout(resolve, ms);
     const onAbort = () => {
       clearTimeout(timer);
       reject(new DOMException("Aborted", "AbortError"));
     };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
@@ -977,6 +965,21 @@ async function connectOnce(
     let settled = false;
     let connectResolved = false;
 
+    // 监听 abort 信号
+    const onAbort = () => {
+      log.info(`[${ctx.accountId}] Abort signal received, disconnecting`);
+      cleanupConnection();
+      settle(resolve);
+    };
+
+    function settle(fn: (value?: any) => void, arg?: any): void {
+      ctx.abortSignal.removeEventListener("abort", onAbort);
+      if (!settled) {
+        settled = true;
+        fn(arg);
+      }
+    }
+
     const client = new AcpClient({
       agentName: acpConfig.agentName,
       domain: acpConfig.domain ?? "aid.pub",
@@ -1005,36 +1008,22 @@ async function connectOnce(
         } else if (status === "disconnected" || status === "error") {
           isRunning = false;
           stopIdleChecker();
-          if (connectResolved && !settled) {
-            settled = true;
+          if (connectResolved) {
             if (status === "error") {
-              reject(new Error("Connection lost"));
+              settle(reject, new Error("Connection lost"));
             } else {
-              resolve();
+              settle(resolve);
             }
           }
         }
       },
       onError: (error) => {
         log.error(`[${ctx.accountId}] Client error: ${error.message}`);
-        if (!settled) {
-          settled = true;
-          reject(error);
-        }
+        settle(reject, error);
       },
     });
 
     acpClient = client;
-
-    // 监听 abort 信号
-    const onAbort = () => {
-      log.info(`[${ctx.accountId}] Abort signal received, disconnecting`);
-      cleanupConnection();
-      if (!settled) {
-        settled = true;
-        resolve();
-      }
-    };
     ctx.abortSignal.addEventListener("abort", onAbort, { once: true });
 
     // 执行连接
@@ -1047,11 +1036,7 @@ async function connectOnce(
         await checkAndUploadAgentMd();
       })
       .catch((err) => {
-        ctx.abortSignal.removeEventListener("abort", onAbort);
-        if (!settled) {
-          settled = true;
-          reject(err);
-        }
+        settle(reject, err);
       });
   });
 }
