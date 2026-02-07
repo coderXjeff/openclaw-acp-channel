@@ -2,6 +2,7 @@ import type { ChannelMessageActionAdapter, ChannelMessageActionName } from "./pl
 import type { AcpChannelConfig } from "./types.js";
 import { sendAcpMessage } from "./outbound.js";
 import { syncAgentMd } from "./monitor.js";
+import { getContactManager } from "./contacts.js";
 
 const providerId = "acp";
 
@@ -44,6 +45,8 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
     const actions = new Set<ChannelMessageActionName>(["send"]);
     // 添加 sync-agent-md action
     actions.add("sync-agent-md");
+    // 添加 manage-contacts action
+    (actions as Set<string>).add("manage-contacts");
     return Array.from(actions);
   },
 
@@ -77,6 +80,75 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
           success: false,
           error: error instanceof Error ? error.message : String(error),
         });
+      }
+    }
+
+    // 处理 manage-contacts action
+    if ((action as string) === "manage-contacts") {
+      const subAction = readStringParam(params, "action", { required: true });
+      const contacts = getContactManager();
+
+      switch (subAction) {
+        case "list": {
+          const group = readStringParam(params, "group");
+          return jsonResult({ contacts: contacts.list(group ?? undefined) });
+        }
+        case "get": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const contact = contacts.get(aid);
+          return jsonResult(contact ? { contact } : { error: "Contact not found" });
+        }
+        case "add": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const name = readStringParam(params, "name");
+          const emoji = readStringParam(params, "emoji");
+          const notes = readStringParam(params, "notes");
+          const now = Date.now();
+          contacts.add({
+            aid,
+            name: name ?? undefined,
+            emoji: emoji ?? undefined,
+            notes: notes ?? undefined,
+            groups: [],
+            interactionCount: 0,
+            totalDurationMs: 0,
+            addedAt: now,
+            updatedAt: now,
+          });
+          return jsonResult({ ok: true, contact: contacts.get(aid) });
+        }
+        case "remove": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const removed = contacts.remove(aid);
+          return jsonResult({ ok: removed });
+        }
+        case "update": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const updates: Record<string, unknown> = {};
+          const name = readStringParam(params, "name");
+          const emoji = readStringParam(params, "emoji");
+          const notes = readStringParam(params, "notes");
+          if (name !== null) updates.name = name;
+          if (emoji !== null) updates.emoji = emoji;
+          if (notes !== null) updates.notes = notes;
+          const updated = contacts.update(aid, updates);
+          return jsonResult(updated ? { ok: true, contact: updated } : { error: "Contact not found" });
+        }
+        case "addToGroup": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const group = readStringParam(params, "group", { required: true })!;
+          return jsonResult({ ok: contacts.addToGroup(aid, group) });
+        }
+        case "removeFromGroup": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const group = readStringParam(params, "group", { required: true })!;
+          return jsonResult({ ok: contacts.removeFromGroup(aid, group) });
+        }
+        case "listGroups": {
+          return jsonResult({ groups: contacts.listGroups() });
+        }
+        default:
+          throw new Error(`Unknown manage-contacts sub-action: ${subAction}`);
       }
     }
 

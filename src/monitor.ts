@@ -8,6 +8,7 @@ import { buildAgentMd, computeSourcesHash } from "./agent-md-builder.js";
 import { loadAgentMdSources } from "./agent-md-sources.js";
 import { getWorkspaceDir } from "./workspace.js";
 import { getAgentMdFetcher } from "./agent-md-fetcher.js";
+import { getContactManager } from "./contacts.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -489,6 +490,21 @@ async function handleInboundMessage(
   // 异步获取发送方 agent.md（不 await，不阻塞消息流程）
   const fetcher = getAgentMdFetcher();
   fetcher.fetch(sender).catch(() => {});
+
+  // 自动添加/更新联系人
+  const contacts = getContactManager();
+  if (!contacts.get(sender)) {
+    contacts.add({
+      aid: sender,
+      name: sender.split(".")[0],
+      groups: [],
+      interactionCount: 0,
+      totalDurationMs: 0,
+      addedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+  contacts.recordInteraction(sender);
 
   const config = getSessionConfig();
 

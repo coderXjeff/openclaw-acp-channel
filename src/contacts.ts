@@ -1,0 +1,145 @@
+import * as fs from "fs";
+import * as path from "path";
+import type { Contact } from "./types.js";
+
+const STORAGE_PATH = path.join(process.env.HOME || "~", ".acp-storage", "contacts.json");
+
+export class ContactManager {
+  private contacts: Map<string, Contact> = new Map();
+  private filePath: string;
+
+  constructor(filePath?: string) {
+    this.filePath = filePath ?? STORAGE_PATH;
+    this.load();
+  }
+
+  /** 添加联系人，如果已存在则忽略 */
+  add(contact: Contact): void {
+    if (this.contacts.has(contact.aid)) {
+      return;
+    }
+    this.contacts.set(contact.aid, { ...contact });
+    this.save();
+  }
+
+  /** 获取联系人 */
+  get(aid: string): Contact | null {
+    const c = this.contacts.get(aid);
+    return c ? { ...c } : null;
+  }
+
+  /** 更新联系人，返回更新后的联系人或 null */
+  update(aid: string, updates: Partial<Omit<Contact, "aid">>): Contact | null {
+    const c = this.contacts.get(aid);
+    if (!c) return null;
+    Object.assign(c, updates, { updatedAt: Date.now() });
+    this.save();
+    return { ...c };
+  }
+
+  /** 删除联系人 */
+  remove(aid: string): boolean {
+    const deleted = this.contacts.delete(aid);
+    if (deleted) this.save();
+    return deleted;
+  }
+
+  /** 列出联系人，可按分组过滤 */
+  list(group?: string): Contact[] {
+    const all = Array.from(this.contacts.values());
+    if (group) {
+      return all.filter((c) => c.groups.includes(group)).map((c) => ({ ...c }));
+    }
+    return all.map((c) => ({ ...c }));
+  }
+
+  /** 将联系人添加到分组 */
+  addToGroup(aid: string, group: string): boolean {
+    const c = this.contacts.get(aid);
+    if (!c) return false;
+    if (c.groups.includes(group)) return true;
+    c.groups.push(group);
+    c.updatedAt = Date.now();
+    this.save();
+    return true;
+  }
+
+  /** 将联系人从分组移除 */
+  removeFromGroup(aid: string, group: string): boolean {
+    const c = this.contacts.get(aid);
+    if (!c) return false;
+    const idx = c.groups.indexOf(group);
+    if (idx === -1) return false;
+    c.groups.splice(idx, 1);
+    c.updatedAt = Date.now();
+    this.save();
+    return true;
+  }
+
+  /** 列出所有分组 */
+  listGroups(): string[] {
+    const groups = new Set<string>();
+    for (const c of this.contacts.values()) {
+      for (const g of c.groups) {
+        groups.add(g);
+      }
+    }
+    return Array.from(groups);
+  }
+
+  /** 记录一次交互 */
+  recordInteraction(aid: string, durationMs?: number): void {
+    const c = this.contacts.get(aid);
+    if (!c) return;
+    c.interactionCount++;
+    c.lastInteractionAt = Date.now();
+    if (durationMs != null) {
+      c.totalDurationMs += durationMs;
+    }
+    c.updatedAt = Date.now();
+    this.save();
+  }
+
+  /** 持久化到 JSON 文件（原子写入） */
+  private save(): void {
+    try {
+      const dir = path.dirname(this.filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const data = Array.from(this.contacts.values());
+      const tmpPath = this.filePath + ".tmp";
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+      fs.renameSync(tmpPath, this.filePath);
+    } catch (err) {
+      console.error("[ACP] Failed to save contacts:", err);
+    }
+  }
+
+  /** 从 JSON 文件加载 */
+  private load(): void {
+    try {
+      if (!fs.existsSync(this.filePath)) return;
+      const raw = fs.readFileSync(this.filePath, "utf8");
+      const data: Contact[] = JSON.parse(raw);
+      if (!Array.isArray(data)) return;
+      for (const c of data) {
+        if (c.aid) {
+          this.contacts.set(c.aid, c);
+        }
+      }
+    } catch (err) {
+      console.error("[ACP] Failed to load contacts:", err);
+    }
+  }
+}
+
+// 模块级单例
+let instance: ContactManager | null = null;
+
+export function getContactManager(): ContactManager {
+  if (!instance) {
+    instance = new ContactManager();
+  }
+  return instance;
+}

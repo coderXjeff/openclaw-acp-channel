@@ -102,6 +102,20 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   maxConcurrentSessions: 10, // 最大 10 个并发会话
 };
 
+/** 联系人 */
+export interface Contact {
+  aid: string;                    // 唯一标识
+  name?: string;                  // 昵称（来自 agent.md 或手动设置）
+  emoji?: string;                 // 表情符号
+  groups: string[];               // 自定义分组
+  interactionCount: number;       // 交互次数
+  lastInteractionAt?: number;     // 最后交互时间戳
+  totalDurationMs: number;        // 总交互时长
+  notes?: string;                 // 备注
+  addedAt: number;                // 添加时间
+  updatedAt: number;              // 更新时间
+}
+
 /** 解析后的远程 agent.md */
 export interface ParsedAgentMd {
   // YAML frontmatter 字段
