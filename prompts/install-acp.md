@@ -189,6 +189,54 @@ node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openc
 
 > **Skill 加载说明**：`/acp` skill 通过 `openclaw.plugin.json` 中的 `"skills": ["./skill"]` 声明，OpenClaw 会自动从插件目录解析并加载。如果重启 gateway 后 `/acp` 不可用，参见下方故障排查。
 
+## Step 6.5: ACP 网络预检（关键步骤）
+
+> **此步骤必须执行。** 前面的步骤只验证了本地文件和配置，但 AID 是否真的能在 ACP 网络上使用，必须实际连接网络才能确认。如果跳过此步骤，用户可能在重启 gateway 后才发现 AID 不可用（如名字已被占用、密码不匹配等），但前端不会有任何提示。
+
+从 `~/.openclaw/openclaw.json` 中读取刚写入的 `channels.acp` 配置，提取 `agentName`、`domain`、`seedPassword`，然后执行以下脚本：
+
+```bash
+node -e "
+const fs=require('fs'),path=require('path');
+const SF=path.join(require('os').homedir(),'.acp-storage','localStorage.json');
+let sd={};try{if(fs.existsSync(SF))sd=JSON.parse(fs.readFileSync(SF,'utf8'))}catch(e){}
+const lsp={getItem(k){return sd[k]??null},setItem(k,v){sd[k]=v;fs.writeFileSync(SF,JSON.stringify(sd,null,2))},removeItem(k){delete sd[k];fs.writeFileSync(SF,JSON.stringify(sd,null,2))},clear(){sd={};fs.writeFileSync(SF,JSON.stringify(sd))},key(i){return Object.keys(sd)[i]??null},get length(){return Object.keys(sd).length}};
+globalThis.window=globalThis.window||{};globalThis.window.localStorage=lsp;globalThis.localStorage=lsp;
+const{AgentManager}=require(require('os').homedir()+'/.openclaw/extensions/acp/node_modules/acp-ts');
+const cfg=JSON.parse(fs.readFileSync(require('os').homedir()+'/.openclaw/openclaw.json','utf8'));
+const ac=cfg.channels.acp,aid=ac.agentName+'.'+(ac.domain||'aid.pub');
+(async()=>{
+  try{
+    const mgr=AgentManager.getInstance(),acp=mgr.initACP(ac.domain||'aid.pub',ac.seedPassword||'');
+    let loaded=await acp.loadAid(aid);
+    if(!loaded)loaded=await acp.createAid(aid);
+    console.log('AID OK: '+loaded);
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT')),10000));
+    const config=await Promise.race([acp.online(),timeout]);
+    console.log('NETWORK OK: messageServer='+config.messageServer);
+    console.log('PREFLIGHT_PASS');
+  }catch(err){
+    // 提取 API 返回的具体错误信息
+    const apiError=err?.response?.data?.error||err?.cause?.response?.data?.error;
+    const msg=apiError||err.message||String(err);
+    console.error('PREFLIGHT_FAIL: '+msg);
+    process.exit(1);
+  }
+})();
+"
+```
+
+**根据预检结果处理（只看最后一行输出，忽略 acp-ts 库的内部日志）：**
+
+- **如果输出包含 `PREFLIGHT_PASS`**：AID 在 ACP 网络上验证通过，继续 Step 7。
+- **如果输出包含 `PREFLIGHT_FAIL`**：**必须停下来**，不要告诉用户安装成功。根据错误信息引导用户：
+  - **含 `is used by another user` 或 `创建失败`**：AID 名字已被占用，**回到 Step 3 让用户换一个 agentName**，然后重新执行 Step 4 ~ Step 6.5
+  - **含 `TIMEOUT`**：网络不通，检查网络连接或代理设置
+  - **含 `signIn` 相关错误**：AID 存在但密码不匹配
+  - **其他错误**：展示 `PREFLIGHT_FAIL:` 后面的错误信息，参考故障排查表
+
+> **重要**：预检失败时，配置文件已经写入但 AID 不可用。如果用户需要换名字，需要同步更新 `openclaw.json` 中的 `agentName` 和 `agentMdPath`，以及重新创建 agent.md 文件。
+
 ## Step 7: 完成 — 统一汇报
 
 安装完成后，向用户展示以下汇总，**明确标注哪些是自动生成的**：
@@ -242,8 +290,11 @@ node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openc
 
 | 症状 | 原因 | 解决 |
 |---|---|---|
+| 预检 `PREFLIGHT_FAIL` + `创建失败` | AID 名字已被其他人注册 | 换一个 agentName，重新执行 Step 3 ~ Step 6.5 |
+| 预检 `PREFLIGHT_FAIL` + `signIn` 错误 | AID 存在但 seedPassword 不匹配（可能之前用不同密码创建过） | 换 agentName，或删除 `~/.acp-storage/localStorage.json` 中对应条目后用正确密码重试 |
+| 预检 `PREFLIGHT_FAIL` + `TIMEOUT` | 网络不通，无法连接 ACP 服务器 | 检查网络连接、代理设置；确认能访问 `aid.pub` |
 | `ACP channel not enabled or not configured` | `enabled` 或 `agentName` 缺失 | 检查 `channels.acp` |
 | `Module not found: acp-ts` | 依赖未装 | `cd ~/.openclaw/extensions/acp && npm install` |
 | `Failed to connect to ACP network` | 网络或 AID 冲突 | 检查网络；换 agentName |
 | 配置后 gateway 启动失败 | JSON 格式错误 | 从备份恢复：`cp ~/.openclaw/openclaw.json.bak ~/.openclaw/openclaw.json` |
-| `/acp` skill 不可用 | 插件未启用或 skill 目录未被发现 | 1. 确认 `plugins.entries.acp.enabled` 为 `true`；2. 确认 `~/.openclaw/extensions/acp/skill/acp/SKILL.md` 存在；3. 兜底方案：`ln -s ~/.openclaw/extensions/acp/skill/acp ~/.openclaw/skills/acp` | 
+| `/acp` skill 不可用 | 插件未启用或 skill 目录未被发现 | 1. 确认 `plugins.entries.acp.enabled` 为 `true`；2. 确认 `~/.openclaw/extensions/acp/skill/acp/SKILL.md` 存在；3. 兜底方案：`ln -s ~/.openclaw/extensions/acp/skill/acp ~/.openclaw/skills/acp` |

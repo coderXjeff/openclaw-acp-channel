@@ -3,6 +3,7 @@ import { DEFAULT_SESSION_CONFIG } from "./types.js";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import { AcpClient, type ConnectionStatus } from "./acp-client.js";
 import { getAcpRuntime, hasAcpRuntime } from "./runtime.js";
+import type { ChannelGatewayContext, ChannelAccountSnapshot, ChannelLogSink } from "./plugin-types.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -13,6 +14,16 @@ let isRunning = false;
 let currentAccount: ResolvedAcpAccount | null = null;
 let currentConfig: OpenClawConfig | null = null;
 let currentAcpConfig: AcpChannelConfig | null = null;
+
+// gateway 运行时状态（供 status adapter 查询）
+let lastConnectedAt: number | null = null;
+let lastDisconnectInfo: { at: number; error?: string } | null = null;
+let lastInboundAt: number | null = null;
+let lastOutboundAt: number | null = null;
+let reconnectAttempts = 0;
+let lastError: string | null = null;
+let lastStartAt: number | null = null;
+let lastStopAt: number | null = null;
 
 // 会话状态管理
 const sessionStates = new Map<string, AcpSessionState>();
@@ -766,4 +777,266 @@ export async function syncAgentMd(): Promise<{ success: boolean; url?: string; e
     console.error(`[ACP] Error syncing agent.md: ${errorMsg}`);
     return { success: false, error: errorMsg };
   }
+}
+
+// ===== Gateway 集成 =====
+
+/**
+ * 指数退避计算
+ */
+function computeBackoff(attempt: number, baseMs: number = 1000, maxMs: number = 30000): number {
+  const delay = Math.min(baseMs * Math.pow(2, attempt - 1), maxMs);
+  // 添加 ±25% 的抖动
+  const jitter = delay * 0.25 * (Math.random() * 2 - 1);
+  return Math.round(delay + jitter);
+}
+
+/**
+ * 带 abort 信号的 sleep
+ */
+function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * 通过 Gateway 启动 ACP 监听（由 OpenClaw 框架调用）
+ * 包含自动重连逻辑
+ */
+export async function startAcpMonitorWithGateway(
+  ctx: ChannelGatewayContext<ResolvedAcpAccount>,
+  acpConfig: AcpChannelConfig
+): Promise<void> {
+  const log = ctx.log ?? { info: console.log, warn: console.warn, error: console.error };
+
+  currentAccount = ctx.account;
+  currentConfig = ctx.cfg;
+  currentAcpConfig = acpConfig;
+  lastStartAt = Date.now();
+  reconnectAttempts = 0;
+
+  ctx.setStatus({
+    accountId: ctx.accountId,
+    running: true,
+    lastStartAt,
+  });
+
+  log.info(`[${ctx.accountId}] Starting ACP gateway for ${ctx.account.fullAid}`);
+
+  while (!ctx.abortSignal.aborted) {
+    try {
+      await connectOnce(ctx, acpConfig, log);
+
+      // connectOnce 正常返回说明连接被主动断开（非错误）
+      if (ctx.abortSignal.aborted) break;
+
+      // 非主动断开，等待重连
+      reconnectAttempts++;
+      lastDisconnectInfo = { at: Date.now() };
+      ctx.setStatus({
+        accountId: ctx.accountId,
+        running: true,
+        connected: false,
+        reconnectAttempts,
+        lastDisconnect: lastDisconnectInfo,
+      });
+
+    } catch (err) {
+      if (ctx.abortSignal.aborted) break;
+
+      reconnectAttempts++;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      lastError = errMsg;
+      lastDisconnectInfo = { at: Date.now(), error: errMsg };
+
+      ctx.setStatus({
+        accountId: ctx.accountId,
+        running: true,
+        connected: false,
+        reconnectAttempts,
+        lastError: errMsg,
+        lastDisconnect: lastDisconnectInfo,
+      });
+
+      const delayMs = computeBackoff(reconnectAttempts);
+      log.warn(`[${ctx.accountId}] Connection failed: ${errMsg}; retrying in ${delayMs}ms (attempt ${reconnectAttempts})`);
+
+      try {
+        await sleepWithAbort(delayMs, ctx.abortSignal);
+      } catch {
+        // abort 信号触发
+        break;
+      }
+    }
+  }
+
+  // 清理
+  log.info(`[${ctx.accountId}] Gateway loop exited`);
+}
+
+/**
+ * 单次连接尝试
+ */
+async function connectOnce(
+  ctx: ChannelGatewayContext<ResolvedAcpAccount>,
+  acpConfig: AcpChannelConfig,
+  log: ChannelLogSink
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let connectResolved = false;
+
+    const client = new AcpClient({
+      agentName: acpConfig.agentName,
+      domain: acpConfig.domain ?? "aid.pub",
+      seedPassword: acpConfig.seedPassword,
+      agentMdPath: acpConfig.agentMdPath,
+      onMessage: (sender, sessionId, identifyingCode, content) => {
+        lastInboundAt = Date.now();
+        handleInboundMessage(sender, sessionId, identifyingCode, content);
+      },
+      onStatusChange: (status: ConnectionStatus) => {
+        log.info(`[${ctx.accountId}] Connection status: ${status}`);
+        if (status === "connected") {
+          isRunning = true;
+          lastConnectedAt = Date.now();
+          reconnectAttempts = 0;
+          lastError = null;
+          startIdleChecker();
+          ctx.setStatus({
+            accountId: ctx.accountId,
+            running: true,
+            connected: true,
+            reconnectAttempts: 0,
+            lastConnectedAt,
+            lastError: null,
+          });
+        } else if (status === "disconnected" || status === "error") {
+          isRunning = false;
+          stopIdleChecker();
+          if (connectResolved && !settled) {
+            settled = true;
+            if (status === "error") {
+              reject(new Error("Connection lost"));
+            } else {
+              resolve();
+            }
+          }
+        }
+      },
+      onError: (error) => {
+        log.error(`[${ctx.accountId}] Client error: ${error.message}`);
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
+      },
+    });
+
+    acpClient = client;
+
+    // 监听 abort 信号
+    const onAbort = () => {
+      log.info(`[${ctx.accountId}] Abort signal received, disconnecting`);
+      cleanupConnection();
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+    ctx.abortSignal.addEventListener("abort", onAbort, { once: true });
+
+    // 执行连接
+    client.connect()
+      .then(async () => {
+        connectResolved = true;
+        log.info(`[${ctx.accountId}] Connected as ${ctx.account.fullAid}`);
+
+        // 检查并上传 agent.md
+        await checkAndUploadAgentMd();
+      })
+      .catch((err) => {
+        ctx.abortSignal.removeEventListener("abort", onAbort);
+        if (!settled) {
+          settled = true;
+          reject(err);
+        }
+      });
+  });
+}
+
+/**
+ * 清理连接资源
+ */
+function cleanupConnection(): void {
+  stopIdleChecker();
+  if (acpClient) {
+    acpClient.disconnect();
+    acpClient = null;
+  }
+  isRunning = false;
+}
+
+/**
+ * 通过 Gateway 停止 ACP 监听
+ */
+export async function stopAcpMonitorFromGateway(
+  ctx: ChannelGatewayContext<ResolvedAcpAccount>
+): Promise<void> {
+  const log = ctx.log ?? { info: console.log, warn: console.warn, error: console.error };
+  log.info(`[${ctx.accountId}] Stopping ACP gateway`);
+
+  cleanupConnection();
+  lastStopAt = Date.now();
+  currentAccount = null;
+  currentConfig = null;
+  currentAcpConfig = null;
+  sessionStates.clear();
+  cachedAgentMdContent = null;
+  cachedAgentMdHash = null;
+
+  ctx.setStatus({
+    accountId: ctx.accountId,
+    running: false,
+    connected: false,
+    lastStopAt,
+  });
+}
+
+/**
+ * 获取连接状态快照（供 status adapter 使用）
+ */
+export function getConnectionSnapshot(): ChannelAccountSnapshot {
+  return {
+    accountId: currentAccount?.accountId ?? "default",
+    name: currentAccount?.fullAid,
+    running: isRunning,
+    connected: acpClient?.connected ?? false,
+    reconnectAttempts,
+    lastConnectedAt,
+    lastDisconnect: lastDisconnectInfo,
+    lastError,
+    lastStartAt,
+    lastStopAt,
+    lastInboundAt,
+    lastOutboundAt,
+    mode: "websocket",
+  };
+}
+
+/**
+ * 记录出站消息时间戳
+ */
+export function recordOutbound(): void {
+  lastOutboundAt = Date.now();
 }
