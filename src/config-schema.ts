@@ -47,6 +47,10 @@ export const acpConfigSchema: JSONSchema = {
       type: "string",
       description: "Path to agent.md file (auto-upload on login)",
     },
+    workspaceDir: {
+      type: "string",
+      description: "Workspace directory path for auto-generating agent.md from source files",
+    },
     profile: {
       type: "object",
       properties: {

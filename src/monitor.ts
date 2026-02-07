@@ -4,6 +4,9 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import { AcpClient, type ConnectionStatus } from "./acp-client.js";
 import { getAcpRuntime, hasAcpRuntime } from "./runtime.js";
 import type { ChannelGatewayContext, ChannelAccountSnapshot, ChannelLogSink } from "./plugin-types.js";
+import { buildAgentMd, computeSourcesHash } from "./agent-md-builder.js";
+import { loadAgentMdSources } from "./agent-md-sources.js";
+import { getWorkspaceDir } from "./workspace.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -31,25 +34,6 @@ let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
 
 // agent.md MD5 存储路径
 const AGENT_MD_HASH_FILE = path.join(process.env.HOME || "~", ".acp-storage", "agent-md-hash.json");
-
-// agent.md 内容缓存
-let cachedAgentMdContent: string | null = null;
-let cachedAgentMdHash: string | null = null;
-
-/**
- * 读取 agent.md 内容（带缓存，仅文件变化时重新读取）
- */
-function loadAgentMdContent(filePath: string): string | null {
-  const hash = calculateFileMd5(filePath);
-  if (!hash) return null;
-  if (hash === cachedAgentMdHash && cachedAgentMdContent) {
-    return cachedAgentMdContent;
-  }
-  const resolvedPath = filePath.replace(/^~/, process.env.HOME || "");
-  cachedAgentMdContent = fs.readFileSync(resolvedPath, "utf8");
-  cachedAgentMdHash = hash;
-  return cachedAgentMdContent;
-}
 
 /**
  * 计算文件 MD5
@@ -106,22 +90,57 @@ function saveAgentMdHash(aid: string, hash: string): void {
 
 /**
  * 检查并上传 agent.md（如果有变化）
+ * 优先使用 workspace 模式（从来源文件自动生成），回退到静态文件模式
  */
-async function checkAndUploadAgentMd(): Promise<void> {
-  if (!acpClient || !currentAcpConfig?.agentMdPath || !currentAccount) {
+export async function checkAndUploadAgentMd(): Promise<void> {
+  if (!acpClient || !currentAccount) {
     return;
   }
 
   const aid = currentAccount.fullAid;
-  const currentHash = calculateFileMd5(currentAcpConfig.agentMdPath);
+  const wsDir = currentAcpConfig?.workspaceDir || getWorkspaceDir();
 
+  // 模式一：workspace 模式 — 从来源文件自动生成 agent.md
+  if (wsDir) {
+    console.log(`[ACP] Generating agent.md from workspace: ${wsDir}`);
+    const sources = loadAgentMdSources(wsDir);
+    const currentHash = computeSourcesHash(sources);
+    const storedHash = getStoredAgentMdHash(aid);
+
+    if (currentHash === storedHash) {
+      console.log("[ACP] agent.md sources unchanged (hash match), skipping upload");
+      return;
+    }
+
+    console.log(`[ACP] agent.md sources changed (${storedHash?.substring(0, 8) || 'none'} -> ${currentHash.substring(0, 8)}), generating and uploading...`);
+    const content = buildAgentMd(sources, aid);
+
+    try {
+      const result = await acpClient.uploadAgentMd(content);
+      if (result.success) {
+        saveAgentMdHash(aid, currentHash);
+        console.log(`[ACP] agent.md uploaded successfully: ${result.url}`);
+      } else {
+        console.error(`[ACP] Failed to upload agent.md: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("[ACP] Error uploading agent.md:", error);
+    }
+    return;
+  }
+
+  // 模式二：静态文件回退 — 读取 agentMdPath 单文件上传
+  if (!currentAcpConfig?.agentMdPath) {
+    return;
+  }
+
+  const currentHash = calculateFileMd5(currentAcpConfig.agentMdPath);
   if (!currentHash) {
     console.log("[ACP] agent.md file not found, skipping upload check");
     return;
   }
 
   const storedHash = getStoredAgentMdHash(aid);
-
   if (currentHash === storedHash) {
     console.log("[ACP] agent.md unchanged (hash match), skipping upload");
     return;
@@ -546,17 +565,8 @@ async function handleInboundMessage(
       messageWithAid = `[ACP System Verified: sender=${sender}, role=external_agent, restrictions=no_file_ops,no_config_changes,no_commands,conversation_only]\n\n${messageWithAid}`;
     }
 
-    // 读取 agent.md 作为 session 系统提示词
-    const agentMdContent = currentAcpConfig?.agentMdPath
-      ? loadAgentMdContent(currentAcpConfig.agentMdPath)
-      : null;
-    if (agentMdContent) {
-      console.log(`[ACP] Loaded agent.md (${agentMdContent.length} chars) as GroupSystemPrompt`);
-    }
-
     // 使用 runtime 的 finalizeInboundContext 构建消息上下文
     // CommandAuthorized: 只有主人才能执行命令（如 /help, /clear 等）
-    // GroupSystemPrompt: 注入 agent.md 内容作为 session 级系统提示词
     const ctx = runtime.channel.reply.finalizeInboundContext({
       Body: messageWithAid,
       RawBody: content,
@@ -576,7 +586,6 @@ async function handleInboundMessage(
       OriginatingTo: `acp:${currentAccount.fullAid}`,
       CommandAuthorized: isOwner,
       ConversationLabel: conversationLabel,
-      GroupSystemPrompt: agentMdContent || undefined,
     });
 
     console.log("[ACP] Context created, dispatching to AI...");
@@ -693,8 +702,6 @@ export async function stopAcpMonitor(): Promise<void> {
   currentConfig = null;
   currentAcpConfig = null;
   sessionStates.clear();
-  cachedAgentMdContent = null;
-  cachedAgentMdHash = null;
 }
 
 /**
@@ -751,15 +758,42 @@ export async function closeSessionManually(sessionId: string, reason: string = '
 
 /**
  * 手动同步 agent.md 到 ACP 网络
- * 用于在修改 agent.md 后强制重新上传
+ * 用于在修改来源文件后强制重新生成并上传
  */
 export async function syncAgentMd(): Promise<{ success: boolean; url?: string; error?: string }> {
   if (!acpClient) {
     return { success: false, error: "ACP client not initialized" };
   }
 
+  const wsDir = currentAcpConfig?.workspaceDir || getWorkspaceDir();
+
+  // 模式一：workspace 模式 — 强制重新生成
+  if (wsDir && currentAccount) {
+    console.log(`[ACP] Manually syncing agent.md from workspace: ${wsDir}`);
+    const sources = loadAgentMdSources(wsDir);
+    const content = buildAgentMd(sources, currentAccount.fullAid);
+
+    try {
+      const result = await acpClient.uploadAgentMd(content);
+      if (result.success) {
+        // 更新哈希
+        const hash = computeSourcesHash(sources);
+        saveAgentMdHash(currentAccount.fullAid, hash);
+        console.log(`[ACP] agent.md synced successfully: ${result.url}`);
+      } else {
+        console.error(`[ACP] Failed to sync agent.md: ${result.error}`);
+      }
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[ACP] Error syncing agent.md: ${errorMsg}`);
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  // 模式二：静态文件回退
   if (!currentAcpConfig?.agentMdPath) {
-    return { success: false, error: "agentMdPath not configured" };
+    return { success: false, error: "Neither workspaceDir nor agentMdPath configured" };
   }
 
   console.log(`[ACP] Manually syncing agent.md from ${currentAcpConfig.agentMdPath}`);
@@ -1002,8 +1036,6 @@ export async function stopAcpMonitorFromGateway(
   currentConfig = null;
   currentAcpConfig = null;
   sessionStates.clear();
-  cachedAgentMdContent = null;
-  cachedAgentMdHash = null;
 
   ctx.setStatus({
     accountId: ctx.accountId,

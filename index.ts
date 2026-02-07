@@ -5,6 +5,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
 import { acpChannelPlugin } from "./src/channel.js";
 import { setAcpRuntime } from "./src/runtime.js";
+import { updateWorkspaceDir } from "./src/workspace.js";
+import { checkAndUploadAgentMd } from "./src/monitor.js";
 
 const plugin = {
   id: "acp",
@@ -21,6 +23,14 @@ const plugin = {
     // 注册 channel (使用 any 避免类型冲突)
     // gateway.startAccount 会由框架在账户启用时自动调用
     api.registerChannel({ plugin: acpChannelPlugin as any });
+
+    // 通过 before_agent_start 钩子自动发现 workspaceDir 并检查同步
+    api.on("before_agent_start", async (_event, ctx) => {
+      if (ctx.workspaceDir) {
+        updateWorkspaceDir(ctx.workspaceDir);
+        await checkAndUploadAgentMd();
+      }
+    });
 
     console.log("[ACP] ACP channel plugin registered (gateway lifecycle managed by framework)");
   },

@@ -7,6 +7,7 @@ export interface AcpChannelConfig {
   ownerAid?: string;        // 主人的 AID
   allowFrom?: string[];     // 允许接收消息的 AID 列表
   agentMdPath?: string;     // agent.md 文件路径，登录后自动上传
+  workspaceDir?: string;    // workspace 目录路径，用于自动生成 agent.md
   profile?: {
     displayName?: string;
     description?: string;
