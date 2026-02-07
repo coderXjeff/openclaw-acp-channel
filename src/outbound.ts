@@ -1,4 +1,4 @@
-import { getAcpClient, getCurrentAccount } from "./monitor.js";
+import { getAcpClient, getCurrentAccount, recordOutbound } from "./monitor.js";
 
 /**
  * 发送消息到 ACP 网络
@@ -22,4 +22,5 @@ export async function sendAcpMessage(params: {
   const messageWithAid = `[From: ${fromAid}]\n[To: ${params.to}]\n\n${params.content}`;
 
   await client.sendMessage(params.to, messageWithAid);
+  recordOutbound();
 }

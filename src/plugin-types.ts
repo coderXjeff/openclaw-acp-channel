@@ -87,7 +87,111 @@ export type ChannelMessageActionAdapter = {
   }) => Promise<{ type: "json"; value: unknown }>;
 };
 
-export type ChannelPlugin<ResolvedAccount = any> = {
+// ===== 账户状态快照 =====
+export type ChannelAccountSnapshot = {
+  accountId: string;
+  name?: string;
+  enabled?: boolean;
+  configured?: boolean;
+  linked?: boolean;
+  running?: boolean;
+  connected?: boolean;
+  reconnectAttempts?: number;
+  lastConnectedAt?: number | null;
+  lastDisconnect?: string | { at: number; status?: number; error?: string; loggedOut?: boolean } | null;
+  lastMessageAt?: number | null;
+  lastEventAt?: number | null;
+  lastError?: string | null;
+  lastStartAt?: number | null;
+  lastStopAt?: number | null;
+  lastInboundAt?: number | null;
+  lastOutboundAt?: number | null;
+  mode?: string;
+  allowFrom?: string[];
+  probe?: unknown;
+  lastProbeAt?: number | null;
+  [key: string]: unknown;
+};
+
+// ===== 日志接口 =====
+export type ChannelLogSink = {
+  info: (msg: string) => void;
+  warn: (msg: string) => void;
+  error: (msg: string) => void;
+  debug?: (msg: string) => void;
+};
+
+// ===== Gateway 相关类型 =====
+export type ChannelGatewayContext<ResolvedAccount = unknown> = {
+  cfg: any;
+  accountId: string;
+  account: ResolvedAccount;
+  runtime: any;
+  abortSignal: AbortSignal;
+  log?: ChannelLogSink;
+  getStatus: () => ChannelAccountSnapshot;
+  setStatus: (next: ChannelAccountSnapshot) => void;
+};
+
+export type ChannelGatewayAdapter<ResolvedAccount = unknown> = {
+  startAccount?: (ctx: ChannelGatewayContext<ResolvedAccount>) => Promise<unknown>;
+  stopAccount?: (ctx: ChannelGatewayContext<ResolvedAccount>) => Promise<void>;
+};
+
+// ===== Status 相关类型 =====
+export type ChannelAccountState = "linked" | "not linked" | "configured" | "not configured" | "enabled" | "disabled";
+
+export type ChannelStatusIssue = {
+  channel: ChannelId;
+  accountId: string;
+  kind: "intent" | "permissions" | "config" | "auth" | "runtime";
+  message: string;
+  fix?: string;
+};
+
+export type ChannelStatusAdapter<ResolvedAccount, Probe = unknown, Audit = unknown> = {
+  defaultRuntime?: ChannelAccountSnapshot;
+  buildChannelSummary?: (params: {
+    account: ResolvedAccount;
+    cfg: any;
+    defaultAccountId: string;
+    snapshot: ChannelAccountSnapshot;
+  }) => Record<string, unknown> | Promise<Record<string, unknown>>;
+  probeAccount?: (params: {
+    account: ResolvedAccount;
+    timeoutMs: number;
+    cfg: any;
+  }) => Promise<Probe>;
+  auditAccount?: (params: {
+    account: ResolvedAccount;
+    timeoutMs: number;
+    cfg: any;
+    probe?: Probe;
+  }) => Promise<Audit>;
+  buildAccountSnapshot?: (params: {
+    account: ResolvedAccount;
+    cfg: any;
+    runtime?: ChannelAccountSnapshot;
+    probe?: Probe;
+    audit?: Audit;
+  }) => ChannelAccountSnapshot | Promise<ChannelAccountSnapshot>;
+  logSelfId?: (params: {
+    account: ResolvedAccount;
+    cfg: any;
+    runtime: any;
+    includeChannelPrefix?: boolean;
+  }) => void;
+  resolveAccountState?: (params: {
+    account: ResolvedAccount;
+    cfg: any;
+    configured: boolean;
+    enabled: boolean;
+  }) => ChannelAccountState;
+  collectStatusIssues?: (accounts: ChannelAccountSnapshot[]) => ChannelStatusIssue[];
+};
+
+// ===== Channel Plugin =====
+export type ChannelPlugin<ResolvedAccount = any, Probe = unknown, Audit = unknown> = {
   id: ChannelId;
   meta: ChannelMeta;
   capabilities: ChannelCapabilities;
@@ -96,6 +200,8 @@ export type ChannelPlugin<ResolvedAccount = any> = {
   outbound?: ChannelOutboundAdapter;
   messaging?: ChannelMessagingAdapter;
   actions?: ChannelMessageActionAdapter;
+  status?: ChannelStatusAdapter<ResolvedAccount, Probe, Audit>;
+  gateway?: ChannelGatewayAdapter<ResolvedAccount>;
   defaults?: {
     queue?: {
       debounceMs?: number;

@@ -2,6 +2,9 @@ import type { ChannelPlugin, ChannelConfigSchema } from "./plugin-types.js";
 import type { ResolvedAcpAccount, AcpChannelConfig } from "./types.js";
 import { acpConfigSchema } from "./config-schema.js";
 import { acpMessageActions } from "./actions.js";
+import { acpGatewayAdapter } from "./gateway.js";
+import { acpStatusAdapter } from "./status.js";
+import type { AcpProbeResult } from "./status.js";
 
 // Channel 元数据
 const acpMeta = {
@@ -208,7 +211,7 @@ const acpMessagingAdapter = {
 };
 
 // 导出 Channel 插件
-export const acpChannelPlugin: ChannelPlugin<ResolvedAcpAccount> = {
+export const acpChannelPlugin: ChannelPlugin<ResolvedAcpAccount, AcpProbeResult> = {
   id: "acp",
   meta: acpMeta,
   capabilities: acpCapabilities,
@@ -217,6 +220,8 @@ export const acpChannelPlugin: ChannelPlugin<ResolvedAcpAccount> = {
   outbound: acpOutboundAdapter,
   messaging: acpMessagingAdapter,
   actions: acpMessageActions,
+  status: acpStatusAdapter,
+  gateway: acpGatewayAdapter,
   defaults: {
     queue: {
       debounceMs: 500,
