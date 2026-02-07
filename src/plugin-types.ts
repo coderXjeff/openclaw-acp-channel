@@ -73,7 +73,7 @@ export type ChannelMessagingAdapter = {
 };
 
 // Message action types
-export type ChannelMessageActionName = "send" | "react" | "reactions" | "read";
+export type ChannelMessageActionName = "send" | "react" | "reactions" | "read" | "sync-agent-md";
 
 export type ChannelMessageActionAdapter = {
   listActions: (ctx: { cfg: any; accountId?: string | null }) => ChannelMessageActionName[];

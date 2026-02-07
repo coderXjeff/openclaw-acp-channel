@@ -43,7 +43,7 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
     }
     const actions = new Set<ChannelMessageActionName>(["send"]);
     // 添加 sync-agent-md action
-    actions.add("sync-agent-md" as ChannelMessageActionName);
+    actions.add("sync-agent-md");
     return Array.from(actions);
   },
 
