@@ -3,6 +3,7 @@ import type { AcpChannelConfig } from "./types.js";
 import { sendAcpMessage } from "./outbound.js";
 import { syncAgentMd } from "./monitor.js";
 import { getContactManager } from "./contacts.js";
+import { getCreditLevel } from "./credit.js";
 
 const providerId = "acp";
 
@@ -114,6 +115,9 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
             totalDurationMs: 0,
             addedAt: now,
             updatedAt: now,
+            creditScore: 50,
+            successfulSessions: 0,
+            failedSessions: 0,
           });
           return jsonResult({ ok: true, contact: contacts.get(aid) });
         }
@@ -146,6 +150,31 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
         }
         case "listGroups": {
           return jsonResult({ groups: contacts.listGroups() });
+        }
+        case "setCreditScore": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const score = Number(params.score);
+          if (isNaN(score)) throw new Error('Parameter "score" must be a number');
+          const reason = readStringParam(params, "reason");
+          const result = contacts.setCreditScore(aid, score, reason ?? undefined);
+          return jsonResult(result ? { ok: true, contact: result } : { error: "Contact not found" });
+        }
+        case "clearCreditOverride": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const result = contacts.clearCreditOverride(aid);
+          return jsonResult(result ? { ok: true, contact: result } : { error: "Contact not found" });
+        }
+        case "getCreditInfo": {
+          const aid = readStringParam(params, "aid", { required: true })!;
+          const contact = contacts.get(aid);
+          if (!contact) return jsonResult({ error: "Contact not found" });
+          return jsonResult({
+            score: contact.creditScore,
+            level: getCreditLevel(contact.creditScore),
+            isManual: contact.creditManualOverride != null,
+            successfulSessions: contact.successfulSessions,
+            failedSessions: contact.failedSessions,
+          });
         }
         default:
           throw new Error(`Unknown manage-contacts sub-action: ${subAction}`);

@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { Contact } from "./types.js";
+import { calculateCreditScore } from "./credit.js";
 
 const STORAGE_PATH = path.join(process.env.HOME || "~", ".acp-storage", "contacts.json");
 
@@ -18,7 +19,12 @@ export class ContactManager {
     if (this.contacts.has(contact.aid)) {
       return;
     }
-    this.contacts.set(contact.aid, { ...contact });
+    this.contacts.set(contact.aid, {
+      ...contact,
+      creditScore: contact.creditScore ?? 50,
+      successfulSessions: contact.successfulSessions ?? 0,
+      failedSessions: contact.failedSessions ?? 0,
+    });
     this.save();
   }
 
@@ -100,6 +106,44 @@ export class ContactManager {
     this.save();
   }
 
+  /** 设置手动信用覆盖（主人操作） */
+  setCreditScore(aid: string, score: number, reason?: string): Contact | null {
+    const c = this.contacts.get(aid);
+    if (!c) return null;
+    c.creditManualOverride = Math.max(0, Math.min(score, 100));
+    c.creditManualReason = reason;
+    c.creditScore = calculateCreditScore(c);
+    c.updatedAt = Date.now();
+    this.save();
+    return { ...c };
+  }
+
+  /** 清除手动覆盖，恢复自动计算 */
+  clearCreditOverride(aid: string): Contact | null {
+    const c = this.contacts.get(aid);
+    if (!c) return null;
+    delete c.creditManualOverride;
+    delete c.creditManualReason;
+    c.creditScore = calculateCreditScore(c);
+    c.updatedAt = Date.now();
+    this.save();
+    return { ...c };
+  }
+
+  /** 记录会话关闭（更新统计 + 重算信用） */
+  recordSessionClose(aid: string, success: boolean, durationMs: number): void {
+    const c = this.contacts.get(aid);
+    if (!c) return;
+    if (success) {
+      c.successfulSessions++;
+    } else {
+      c.failedSessions++;
+    }
+    c.creditScore = calculateCreditScore(c);
+    c.updatedAt = Date.now();
+    this.save();
+  }
+
   /** 持久化到 JSON 文件（原子写入） */
   private save(): void {
     try {
@@ -125,6 +169,10 @@ export class ContactManager {
       if (!Array.isArray(data)) return;
       for (const c of data) {
         if (c.aid) {
+          // 向后兼容：补充缺失的信用字段
+          if (c.creditScore == null) c.creditScore = 50;
+          if (c.successfulSessions == null) c.successfulSessions = 0;
+          if (c.failedSessions == null) c.failedSessions = 0;
           this.contacts.set(c.aid, c);
         }
       }

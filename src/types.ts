@@ -114,6 +114,11 @@ export interface Contact {
   notes?: string;                 // 备注
   addedAt: number;                // 添加时间
   updatedAt: number;              // 更新时间
+  creditScore: number;            // 信用评分 0-100，默认 50
+  creditManualOverride?: number;  // 主人手动覆盖的评分（优先于自动计算）
+  creditManualReason?: string;    // 手动覆盖原因
+  successfulSessions: number;     // 正常结束的会话数
+  failedSessions: number;         // 异常结束的会话数
 }
 
 /** 解析后的远程 agent.md */

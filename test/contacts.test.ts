@@ -15,6 +15,9 @@ function makeContact(aid: string, overrides?: Partial<Contact>): Contact {
     totalDurationMs: 0,
     addedAt: now,
     updatedAt: now,
+    creditScore: 50,
+    successfulSessions: 0,
+    failedSessions: 0,
     ...overrides,
   };
 }
@@ -190,5 +193,98 @@ describe("ContactManager", () => {
     const c = manager.get("alice.aid.pub")!;
     c.name = "Hacked";
     expect(manager.get("alice.aid.pub")!.name).toBe("alice");
+  });
+
+  // ===== 信用评分 =====
+
+  it("新联系人有默认信用字段", () => {
+    manager.add(makeContact("alice.aid.pub"));
+    const c = manager.get("alice.aid.pub")!;
+    expect(c.creditScore).toBe(50);
+    expect(c.successfulSessions).toBe(0);
+    expect(c.failedSessions).toBe(0);
+    expect(c.creditManualOverride).toBeUndefined();
+  });
+
+  it("setCreditScore 设置手动覆盖", () => {
+    manager.add(makeContact("alice.aid.pub"));
+    const result = manager.setCreditScore("alice.aid.pub", 80, "good agent");
+    expect(result).not.toBeNull();
+    expect(result!.creditScore).toBe(80);
+    expect(result!.creditManualOverride).toBe(80);
+    expect(result!.creditManualReason).toBe("good agent");
+  });
+
+  it("setCreditScore clamp 到 [0, 100]", () => {
+    manager.add(makeContact("alice.aid.pub"));
+    manager.setCreditScore("alice.aid.pub", 150);
+    expect(manager.get("alice.aid.pub")!.creditScore).toBe(100);
+    manager.setCreditScore("alice.aid.pub", -10);
+    expect(manager.get("alice.aid.pub")!.creditScore).toBe(0);
+  });
+
+  it("setCreditScore 不存在的 aid 返回 null", () => {
+    expect(manager.setCreditScore("nonexistent.aid.pub", 80)).toBeNull();
+  });
+
+  it("clearCreditOverride 恢复自动计算", () => {
+    manager.add(makeContact("alice.aid.pub"));
+    manager.setCreditScore("alice.aid.pub", 10, "bad");
+    expect(manager.get("alice.aid.pub")!.creditScore).toBe(10);
+
+    const result = manager.clearCreditOverride("alice.aid.pub");
+    expect(result).not.toBeNull();
+    expect(result!.creditManualOverride).toBeUndefined();
+    expect(result!.creditManualReason).toBeUndefined();
+    // 自动计算回基础分 50
+    expect(result!.creditScore).toBe(50);
+  });
+
+  it("clearCreditOverride 不存在的 aid 返回 null", () => {
+    expect(manager.clearCreditOverride("nonexistent.aid.pub")).toBeNull();
+  });
+
+  it("recordSessionClose 更新成功会话统计和信用分", () => {
+    manager.add(makeContact("alice.aid.pub"));
+    manager.recordSessionClose("alice.aid.pub", true, 60000);
+    const c = manager.get("alice.aid.pub")!;
+    expect(c.successfulSessions).toBe(1);
+    expect(c.failedSessions).toBe(0);
+    // 50 + 0(interaction) + 0(duration) + 1*3(session) = 53
+    expect(c.creditScore).toBe(53);
+  });
+
+  it("recordSessionClose 更新失败会话统计和信用分", () => {
+    manager.add(makeContact("alice.aid.pub"));
+    manager.recordSessionClose("alice.aid.pub", false, 60000);
+    const c = manager.get("alice.aid.pub")!;
+    expect(c.successfulSessions).toBe(0);
+    expect(c.failedSessions).toBe(1);
+    // 50 + 0 + 0 - 3 = 47
+    expect(c.creditScore).toBe(47);
+  });
+
+  it("recordSessionClose 不存在的 aid 不报错", () => {
+    expect(() => manager.recordSessionClose("nonexistent.aid.pub", true, 1000)).not.toThrow();
+  });
+
+  it("向后兼容：加载缺少信用字段的联系人", () => {
+    // 写入一个没有信用字段的旧格式联系人
+    const oldContact = {
+      aid: "old.aid.pub",
+      name: "old",
+      groups: [],
+      interactionCount: 5,
+      totalDurationMs: 10000,
+      addedAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    fs.writeFileSync(filePath, JSON.stringify([oldContact]));
+
+    const manager2 = new ContactManager(filePath);
+    const c = manager2.get("old.aid.pub")!;
+    expect(c.creditScore).toBe(50);
+    expect(c.successfulSessions).toBe(0);
+    expect(c.failedSessions).toBe(0);
   });
 });

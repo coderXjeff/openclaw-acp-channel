@@ -9,6 +9,7 @@ import { loadAgentMdSources } from "./agent-md-sources.js";
 import { getWorkspaceDir } from "./workspace.js";
 import { getAgentMdFetcher } from "./agent-md-fetcher.js";
 import { getContactManager } from "./contacts.js";
+import { shouldRejectByCredit } from "./credit.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -334,6 +335,12 @@ async function closeSession(state: AcpSessionState, reason: string, sendEndMarke
   state.closeReason = reason;
   console.log(`[ACP] Session ${state.sessionId} closed: ${reason}`);
 
+  // 记录会话统计到联系人
+  const contacts = getContactManager();
+  const durationMs = state.closedAt - state.createdAt;
+  const success = !['max_turns', 'max_duration', 'lru_evicted'].some(r => reason.startsWith(r));
+  contacts.recordSessionClose(state.targetAid, success, durationMs);
+
   // 发送结束标记（如果配置了）
   if (sendEndMarker && acpClient?.connected) {
     const config = getSessionConfig();
@@ -491,6 +498,9 @@ async function handleInboundMessage(
   const fetcher = getAgentMdFetcher();
   fetcher.fetch(sender).catch(() => {});
 
+  // 判断是否是主人发送的消息（提前到信用检查之前）
+  const isOwner = currentAccount.ownerAid ? sender === currentAccount.ownerAid : false;
+
   // 自动添加/更新联系人
   const contacts = getContactManager();
   if (!contacts.get(sender)) {
@@ -502,9 +512,21 @@ async function handleInboundMessage(
       totalDurationMs: 0,
       addedAt: Date.now(),
       updatedAt: Date.now(),
+      creditScore: 50,
+      successfulSessions: 0,
+      failedSessions: 0,
     });
   }
   contacts.recordInteraction(sender);
+
+  // 信用检查（仅对非主人生效）
+  if (!isOwner) {
+    const existing = contacts.get(sender);
+    if (shouldRejectByCredit(existing)) {
+      console.log(`[ACP] Rejected message from ${sender} (low credit: ${existing?.creditScore})`);
+      return;
+    }
+  }
 
   const config = getSessionConfig();
 
@@ -547,10 +569,6 @@ async function handleInboundMessage(
   sessionState.lastActivityAt = Date.now();
   // 注意：turns 统计的是入站消息次数，不是对话轮次（一轮 = 一问一答）
   console.log(`[ACP] Session ${sessionId} inbound message ${sessionState.turns}/${config.maxTurns}`);
-  const senderName = sender.split(".")[0];
-
-  // 判断是否是主人发送的消息
-  const isOwner = currentAccount.ownerAid ? sender === currentAccount.ownerAid : false;
   console.log(`[ACP] Received from ${sender} (isOwner: ${isOwner}): ${content.substring(0, 50)}...`);
 
   try {

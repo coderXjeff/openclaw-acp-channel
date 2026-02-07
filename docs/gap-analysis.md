@@ -13,10 +13,17 @@
 | ACP 网络连接 | ✅ | 使用 `acp-ts` 的 `AgentManager` + `AgentWS` |
 | 心跳保活 | ✅ | `HeartbeatClient` 在线状态维护 |
 | 邀请接受 | ✅ | 通过 `HeartbeatClient.onInvite()` 自动接受邀请 |
-| 会话管理（基础） | ✅ | 内存 `Map<string, AcpSession>` 管理活跃会话 |
+| 会话管理（完整） | ✅ | 内存 Map + 四层终止控制（结束标记/硬限制/空闲超时/LRU 淘汰） |
 | 来源白名单 | ✅ | `allowFrom` 配置，支持 `*` 通配 |
 | 消息调度 | ✅ | 接入 OpenClaw 的 `reply.dispatchReplyFromConfig()` |
 | 多轮对话 | ✅ | 基于 session key 的上下文保持 |
+| Gateway 生命周期 | ✅ | 账号启动/停止/重连/探测，指数退避重连 |
+| Status 状态报告 | ✅ | 连接状态、会话统计、最后活动时间 |
+| Agent.md 管理 | ✅ | workspace 自动生成 + 静态文件上传，MD5 变更检测 |
+| 远程 Agent.md 获取 | ✅ | HTTP GET + 内存/文件双层缓存，YAML frontmatter 解析 |
+| 联系人管理 | ✅ | CRUD/分组/交互记录/JSON 持久化，入站自动添加 |
+| 信用评级体系 | ✅ | 自动评分（交互/时长/会话成功率）+ 手动覆盖，低信用拒绝 |
+| Actions | ✅ | send, sync-agent-md, manage-contacts（含信用子操作） |
 
 当有新会话，清除原始的   LRU原则
 
@@ -50,16 +57,16 @@ OpenClaw 的 `ChannelPlugin` 接口定义了丰富的 adapter 模块。下表列
 | **config** | ✅ (基础) | ✅ | ✅ | 配置 schema |
 | **outbound** | ✅ (仅文本) | ✅ | ✅ | 出站消息 |
 | **messaging** | ❌ | ✅ | ✅ | normalizeTarget, targetResolver |
-| **actions** | ✅ (空) | ✅ | ✅ | 动作处理 |
+| **actions** | ✅ | ✅ | ✅ | send, sync-agent-md, manage-contacts |
 | **onboarding** | ❌ | ✅ | ✅ | 新用户/群组引导 |
 | **pairing** | ❌ | ✅ | ✅ | DM 安全配对、审批通知 | T0
-| **security** | ❌ | ✅ | ✅ | DM 策略、群组安全警告 |  T0
+| **security** | ✅ (基础) | ✅ | ✅ | allowlist + 信用评级拒绝 |
 | **groups** | ❌ | ✅ | ✅ | requireMention, toolPolicy |
 | **threading** | ❌ | ✅ | ✅ | 消息线程 / 话题 |
 | **directory** | ❌ | ✅ | ✅ | listPeers, listGroups |
 | **resolver** | ❌ | ✅ | ✅ | 目标解析（用户、频道） |
-| **status** | ❌ | ✅ | ✅ | 运行状态、探测、审计 |
-| **gateway** | ❌ | ✅ | ✅ | 账号生命周期管理 |
+| **status** | ✅ | ✅ | ✅ | 运行状态、探测、审计 |
+| **gateway** | ✅ | ✅ | ✅ | 账号生命周期管理 |
 | **setup** | ❌ | ✅ | ✅ | 账号验证、配置应用 |
 | **streaming** | ❌ | ✅ | ✅ | 流式输出合并配置 |
 | **reload** | ❌ | ✅ | ✅ | 配置热更新 |
