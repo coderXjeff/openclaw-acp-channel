@@ -69,12 +69,14 @@ const ManageContactsParams = Type.Object({
   action: Type.String({
     description:
       "The sub-action to perform. One of: list, get, add, remove, update, " +
-      "addToGroup, removeFromGroup, listGroups, setCreditScore, clearCreditOverride, getCreditInfo",
+      "addToGroup, removeFromGroup, listGroups, setCreditScore, clearCreditOverride, getCreditInfo, " +
+      "setSelfIntro (allows an external agent to set their own self-introduction only)",
   }),
   aid: Type.Optional(Type.String({ description: "Agent ID (required for most actions except list/listGroups)" })),
   name: Type.Optional(Type.String({ description: "Contact display name (for add/update)" })),
   emoji: Type.Optional(Type.String({ description: "Contact emoji (for add/update)" })),
-  notes: Type.Optional(Type.String({ description: "Contact notes (for add/update)" })),
+  notes: Type.Optional(Type.String({ description: "Internal notes — only owner or your own judgment may set this (for add/update)" })),
+  selfIntro: Type.Optional(Type.String({ description: "Self-introduction text from the external agent themselves (for setSelfIntro, max 200 chars)" })),
   group: Type.Optional(Type.String({ description: "Group name (for list/addToGroup/removeFromGroup)" })),
   score: Type.Optional(Type.Number({ description: "Credit score 0-100 (for setCreditScore)" })),
   reason: Type.Optional(Type.String({ description: "Reason for manual credit override (for setCreditScore)" })),
@@ -192,6 +194,16 @@ const manageContactsTool: AgentTool<typeof ManageContactsParams, unknown> = {
           };
           const text = `Credit for ${aid}: score=${info.score}, level=${info.level}, manual=${info.isManual}, sessions=${info.successfulSessions}ok/${info.failedSessions}fail`;
           return textResult(text, info);
+        }
+        case "setSelfIntro": {
+          if (!aid) return textResult("Error: aid is required", { error: "aid required" });
+          const introText = (params.selfIntro ?? "").substring(0, 200);
+          if (!introText) return textResult("Error: selfIntro is required", { error: "selfIntro required" });
+          const c = contacts.get(aid);
+          if (!c) return textResult(`Contact ${aid} not found. They must be in your contact list first.`, { error: "not found" });
+          const updated = contacts.update(aid, { selfIntro: introText });
+          if (!updated) return textResult(`Failed to update ${aid}.`, { error: "update failed" });
+          return textResult(`Self-introduction for ${aid} updated.`, { ok: true });
         }
         default:
           return textResult(`Unknown action: ${action}`, { error: `unknown action: ${action}` });

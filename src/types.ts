@@ -111,7 +111,8 @@ export interface Contact {
   interactionCount: number;       // 交互次数
   lastInteractionAt?: number;     // 最后交互时间戳
   totalDurationMs: number;        // 总交互时长
-  notes?: string;                 // 备注
+  notes?: string;                 // 内部备注（主人或 AI 自己写的，外部不可修改）
+  selfIntro?: string;             // 对方的自我介绍（外部 Agent 只能修改自己的这个字段）
   addedAt: number;                // 添加时间
   updatedAt: number;              // 更新时间
   creditScore: number;            // 信用评分 0-100，默认 50
