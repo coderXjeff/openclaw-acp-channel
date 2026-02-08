@@ -205,9 +205,9 @@ interface AcpChannelConfig {
 
 ```typescript
 interface AcpSessionConfig {
-  maxTurns: number                     // 默认 15
-  maxDurationMs: number                // 默认 600000
-  idleTimeoutMs: number                // 默认 120000
+  maxTurns: number                     // 默认 100
+  maxDurationMs: number                // 默认 1800000
+  idleTimeoutMs: number                // 默认 600000
   maxConcurrentSessions: number        // 默认 10
   maxConsecutiveEmptyReplies: number   // 默认 2
   endMarkers: string[]                 // 默认 ['[END]','[GOODBYE]','[NO_REPLY]']

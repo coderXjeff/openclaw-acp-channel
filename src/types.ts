@@ -28,9 +28,9 @@ export interface AcpSessionConfig {
   sendAckOnReceiveEnd?: boolean;      // 收到结束标记时发送 ACK，默认 false
 
   // 第三层：硬限制 - 三件套
-  maxTurns?: number;                  // 最大入站消息次数（非对话轮次），默认 15，最小 1
-  maxDurationMs?: number;             // 最大持续时间(ms)，默认 600000 (10分钟)，最小 1000
-  idleTimeoutMs?: number;             // 空闲超时(ms)，默认 120000 (120秒)，最小 1000
+  maxTurns?: number;                  // 最大入站消息次数（非对话轮次），默认 100，最小 1
+  maxDurationMs?: number;             // 最大持续时间(ms)，默认 1800000 (30分钟)，最小 1000
+  idleTimeoutMs?: number;             // 空闲超时(ms)，默认 600000 (10分钟)，最小 1000
 
   // 第四层：并发控制 - LRU 淘汰
   maxConcurrentSessions?: number;     // 最大并发会话数，默认 10，超出时淘汰最久未活动的会话
@@ -95,9 +95,9 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   sendEndMarkerOnClose: true,
   sendAckOnReceiveEnd: false,
   // 第三层
-  maxTurns: 15,
-  maxDurationMs: 600000,    // 10 分钟（匹配 maxTurns 15 轮 × ~30s/轮 + 余量）
-  idleTimeoutMs: 120000,    // 120 秒（agent 间对话 tool call 延迟较大）
+  maxTurns: 100,
+  maxDurationMs: 1800000,   // 30 分钟
+  idleTimeoutMs: 600000,    // 10 分钟（agent 间对话 tool call 延迟较大）
   // 第四层
   maxConcurrentSessions: 10, // 最大 10 个并发会话
 };
