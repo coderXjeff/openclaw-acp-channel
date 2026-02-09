@@ -33,7 +33,8 @@ export interface AcpSessionConfig {
   idleTimeoutMs?: number;             // 空闲超时(ms)，默认 600000 (10分钟)，最小 1000
 
   // 第四层：并发控制 - LRU 淘汰
-  maxConcurrentSessions?: number;     // 最大并发会话数，默认 10，超出时淘汰最久未活动的会话
+  maxConcurrentSessions?: number;     // 最大并发会话数，默认 400，超出时淘汰最久未活动的会话
+  maxSessionsPerTarget?: number;      // 同一 targetAid 最大并发会话数，默认 10，超出时淘汰最久未活动的会话
 }
 
 // 解析后的账户信息
@@ -77,6 +78,7 @@ export interface AcpSession {
 export interface AcpSessionState {
   sessionId: string;
   targetAid: string;
+  isOwner: boolean;                   // 是否是主人的会话
   status: 'active' | 'closing' | 'closed';
   turns: number;                    // 入站消息次数
   consecutiveEmptyReplies: number;  // 连续空回复计数
@@ -95,11 +97,12 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   sendEndMarkerOnClose: true,
   sendAckOnReceiveEnd: false,
   // 第三层
-  maxTurns: 100,
-  maxDurationMs: 1800000,   // 30 分钟
-  idleTimeoutMs: 600000,    // 10 分钟（agent 间对话 tool call 延迟较大）
+  maxTurns: 1000,
+  maxDurationMs: 172800000,   // 48 小时
+  idleTimeoutMs: 86400000,    // 24 小时
   // 第四层
-  maxConcurrentSessions: 10, // 最大 10 个并发会话
+  maxConcurrentSessions: 400,       // 最大 400 个并发会话
+  maxSessionsPerTarget: 10,         // 同一 targetAid 最大 10 个并发会话
 };
 
 /** 联系人 */

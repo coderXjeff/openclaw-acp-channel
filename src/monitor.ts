@@ -262,6 +262,9 @@ function getSessionConfig(): Required<AcpSessionConfig> {
   if (typeof config.maxConcurrentSessions !== 'number' || config.maxConcurrentSessions < 1) {
     config.maxConcurrentSessions = DEFAULT_SESSION_CONFIG.maxConcurrentSessions;
   }
+  if (typeof config.maxSessionsPerTarget !== 'number' || config.maxSessionsPerTarget < 1) {
+    config.maxSessionsPerTarget = DEFAULT_SESSION_CONFIG.maxSessionsPerTarget;
+  }
 
   return config;
 }
@@ -287,9 +290,9 @@ function getActiveSessionCount(): number {
 async function evictLruSessions(maxSessions: number): Promise<number> {
   const activeSessions: AcpSessionState[] = [];
 
-  // 收集所有活跃会话
+  // 收集所有活跃的非主人会话（主人会话不参与 LRU 淘汰）
   for (const state of sessionStates.values()) {
-    if (state.status === 'active') {
+    if (state.status === 'active' && !state.isOwner) {
       activeSessions.push(state);
     }
   }
@@ -320,27 +323,41 @@ async function evictLruSessions(maxSessions: number): Promise<number> {
 /**
  * 获取或创建会话状态（带 LRU 淘汰）
  */
-async function getOrCreateSessionState(sessionId: string, targetAid: string): Promise<AcpSessionState> {
+async function getOrCreateSessionState(sessionId: string, targetAid: string, isOwner: boolean = false): Promise<AcpSessionState> {
   let state = sessionStates.get(sessionId);
   if (!state) {
-    // 新会话：先关闭同一 targetAid 的旧 session（静默关闭，不发 [END]）
-    for (const [oldId, oldState] of sessionStates) {
-      if (oldState.targetAid === targetAid && oldState.status === 'active') {
-        oldState.status = 'closed';
-        oldState.closedAt = Date.now();
-        oldState.closeReason = 'superseded';
-        console.log(`[ACP] Session ${oldId} superseded by new session ${sessionId} from ${targetAid}`);
+    const config = getSessionConfig();
+
+    // 新会话：检查同一 targetAid 的活跃会话数，超出限制时淘汰最久未活动的（主人会话不被淘汰）
+    if (!isOwner) {
+      const targetActiveSessions: AcpSessionState[] = [];
+      for (const [, oldState] of sessionStates) {
+        if (oldState.targetAid === targetAid && oldState.status === 'active') {
+          targetActiveSessions.push(oldState);
+        }
+      }
+      if (targetActiveSessions.length >= config.maxSessionsPerTarget) {
+        // 按 lastActivityAt 升序排序，淘汰最久未活动的
+        targetActiveSessions.sort((a, b) => a.lastActivityAt - b.lastActivityAt);
+        const evictCount = targetActiveSessions.length - config.maxSessionsPerTarget + 1;
+        for (let i = 0; i < evictCount && i < targetActiveSessions.length; i++) {
+          const old = targetActiveSessions[i];
+          old.status = 'closed';
+          old.closedAt = Date.now();
+          old.closeReason = 'superseded';
+          console.log(`[ACP] Session ${old.sessionId} superseded (target ${targetAid} exceeded ${config.maxSessionsPerTarget} concurrent sessions)`);
+        }
       }
     }
 
     // LRU 淘汰检查
-    const config = getSessionConfig();
     await evictLruSessions(config.maxConcurrentSessions);
 
     const now = Date.now();
     state = {
       sessionId,
       targetAid,
+      isOwner,
       status: 'active',
       turns: 0,
       consecutiveEmptyReplies: 0,
@@ -436,6 +453,7 @@ function startIdleChecker(): void {
 
     for (const [sessionId, state] of sessionStates) {
       if (state.status !== 'active') continue;
+      if (state.isOwner) continue; // 主人会话不因空闲超时关闭
 
       const idleTime = now - state.lastActivityAt;
       if (idleTime >= config.idleTimeoutMs) {
@@ -597,7 +615,7 @@ async function handleInboundMessage(
   const config = getSessionConfig();
 
   // ===== 获取或创建会话状态（allowlist 检查通过后，含 LRU 淘汰）=====
-  const sessionState = await getOrCreateSessionState(sessionId, sender);
+  const sessionState = await getOrCreateSessionState(sessionId, sender, isOwner);
 
   // ===== 第二层：检查会话是否已关闭或正在关闭 =====
   if (sessionState.status === 'closed' || sessionState.status === 'closing') {
@@ -610,16 +628,18 @@ async function handleInboundMessage(
     return;
   }
 
-  // ===== 第三层：硬限制检查 =====
-  const hardLimitCheck = checkHardLimits(sessionState, config);
-  if (hardLimitCheck.terminate) {
-    console.log(`[ACP] Session ${sessionId} hit hard limit: ${hardLimitCheck.reason}`);
-    await closeSession(sessionState, hardLimitCheck.reason!, true);
-    return;
+  // ===== 第三层：硬限制检查（主人会话跳过）=====
+  if (!sessionState.isOwner) {
+    const hardLimitCheck = checkHardLimits(sessionState, config);
+    if (hardLimitCheck.terminate) {
+      console.log(`[ACP] Session ${sessionId} hit hard limit: ${hardLimitCheck.reason}`);
+      await closeSession(sessionState, hardLimitCheck.reason!, true);
+      return;
+    }
   }
 
-  // ===== 第二层：检查入站消息是否包含结束标记 =====
-  if (hasEndMarker(content, config.endMarkers)) {
+  // ===== 第二层：检查入站消息是否包含结束标记（主人会话跳过）=====
+  if (!sessionState.isOwner && hasEndMarker(content, config.endMarkers)) {
     console.log(`[ACP] Received end marker from ${sender}, closing session`);
     await closeSession(sessionState, 'received_end_marker', false);
     // 发送 ACK（如果配置了，包含结束标记避免对方继续回复）
@@ -720,8 +740,8 @@ async function handleInboundMessage(
         replyText = text;
         console.log(`[ACP] Delivering reply: ${text.substring(0, 50)}`);
 
-        // ===== 第一层：检查 AI 回复是否包含结束标记 =====
-        if (hasEndMarker(text, config.endMarkers)) {
+        // ===== 第一层：检查 AI 回复是否包含结束标记（主人会话跳过）=====
+        if (!sessionState.isOwner && hasEndMarker(text, config.endMarkers)) {
           console.log(`[ACP] AI sent end marker, closing session after this reply`);
           sessionState.status = 'closing';
         }
@@ -753,12 +773,12 @@ async function handleInboundMessage(
     markDispatchIdle();
     console.log("[ACP] Dispatch result:", result);
 
-    // ===== 第一层：检查空回复 =====
+    // ===== 第一层：检查空回复（主人会话不因空回复关闭）=====
     if (!replyText?.trim()) {
       sessionState.consecutiveEmptyReplies++;
       console.log(`[ACP] Empty reply (${sessionState.consecutiveEmptyReplies}/${config.consecutiveEmptyThreshold})`);
 
-      if (sessionState.consecutiveEmptyReplies >= config.consecutiveEmptyThreshold) {
+      if (!sessionState.isOwner && sessionState.consecutiveEmptyReplies >= config.consecutiveEmptyThreshold) {
         console.log(`[ACP] ${config.consecutiveEmptyThreshold} consecutive empty replies, closing session`);
         await closeSession(sessionState, `consecutive_empty_${config.consecutiveEmptyThreshold}`, true);
       }
