@@ -13,8 +13,11 @@ import type { ConnectionStatus } from "acp-ts";
 import type { IAgentWS } from "acp-ts/dist/interfaces.js";
 import { FileSync, type FileSyncConfig } from "acp-ts/dist/filesync.js";
 import type { AcpSession } from "./types.js";
+import * as path from "path";
 
 export type { ConnectionStatus };
+
+const ACP_STORAGE_DIR = path.join(process.env.HOME || "~", ".acp-storage");
 
 export interface AidInstanceOptions {
   agentName: string;
@@ -59,7 +62,7 @@ export class AcpMultiClient {
       const manager = AgentManager.getInstance();
 
       // 1. initACP（每个 AID 可能有不同的 seedPassword）
-      const acp = manager.initACP(opts.domain, opts.seedPassword || "");
+      const acp = manager.initACP(opts.domain, opts.seedPassword || "", ACP_STORAGE_DIR);
       if (opts.agentMdPath) {
         acp.setAgentMdPath(opts.agentMdPath);
       }

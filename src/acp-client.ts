@@ -5,8 +5,11 @@
 import { AgentManager, HeartbeatClient } from "acp-ts";
 import { FileSync } from "acp-ts/dist/filesync.js";
 import type { AcpSession } from "./types.js";
+import * as path from "path";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting" | "error";
+
+const ACP_STORAGE_DIR = path.join(process.env.HOME || "~", ".acp-storage");
 
 export interface AcpClientOptions {
   agentName: string;
@@ -46,7 +49,7 @@ export class AcpClient {
 
     try {
       // 1. 初始化 AgentCP
-      const acp = this.manager.initACP(this.options.domain, this.options.seedPassword || "");
+      const acp = this.manager.initACP(this.options.domain, this.options.seedPassword || "", ACP_STORAGE_DIR);
 
       // 1.5 设置 agent.md 路径（如果配置了），登录后自动上传
       if (this.options.agentMdPath) {
