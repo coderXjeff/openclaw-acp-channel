@@ -1,7 +1,7 @@
 import type { ChannelMessageActionAdapter, ChannelMessageActionName } from "./plugin-types.js";
 import type { AcpChannelConfig } from "./types.js";
 import { sendAcpMessage, parseTarget } from "./outbound.js";
-import { syncAgentMd } from "./monitor.js";
+import { syncAgentMdForIdentity } from "./monitor.js";
 import { getContactManager } from "./contacts.js";
 import { getCreditLevel } from "./credit.js";
 
@@ -74,7 +74,7 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
     // 处理 sync-agent-md action
     if (action === "sync-agent-md") {
       try {
-        const result = await syncAgentMd();
+        const result = await syncAgentMdForIdentity(accountId ?? undefined);
         return jsonResult(result);
       } catch (error) {
         return jsonResult({
@@ -87,7 +87,7 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
     // 处理 manage-contacts action
     if (action === "manage-contacts") {
       const subAction = readStringParam(params, "action", { required: true });
-      const contacts = getContactManager();
+      const contacts = getContactManager(accountId ?? undefined);
 
       switch (subAction) {
         case "list": {
@@ -199,6 +199,7 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
           to: targetAid,
           sessionId,
           content: content ?? "",
+          identityId: accountId ?? undefined,
         });
 
         return jsonResult({

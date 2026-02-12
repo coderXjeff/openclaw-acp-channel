@@ -15,6 +15,30 @@ export interface AcpChannelConfig {
   };
   // 会话终止控制配置
   session?: AcpSessionConfig;
+  // 多身份配置
+  identities?: Record<string, AcpIdentityEntry>;
+}
+
+// 身份的 ACP 元数据（存在 IdentityProfile.metadata 中）
+export interface AcpIdentityMeta {
+  agentName: string;
+  domain?: string;
+  seedPassword?: string;
+  ownerAid?: string;
+  allowFrom?: string[];
+  workspaceDir?: string;
+  agentMdPath?: string;
+}
+
+// 多身份配置中单个身份的条目
+export interface AcpIdentityEntry {
+  agentName: string;
+  domain?: string;
+  seedPassword?: string;
+  ownerAid?: string;
+  allowFrom?: string[];
+  workspaceDir?: string;
+  agentMdPath?: string;
 }
 
 // 会话终止控制配置
@@ -39,7 +63,8 @@ export interface AcpSessionConfig {
 
 // 解析后的账户信息
 export interface ResolvedAcpAccount {
-  accountId: string;
+  accountId: string;        // = identityId（多身份）或 "default"（单身份）
+  identityId: string;       // OpenClaw IdentityProfile.id
   agentName: string;
   domain: string;
   fullAid: string;          // 完整 AID: agentName.domain
@@ -47,6 +72,8 @@ export interface ResolvedAcpAccount {
   ownerAid: string;
   allowFrom: string[];
   seedPassword: string;
+  workspaceDir?: string;
+  agentMdPath?: string;
 }
 
 // ACP 消息内容类型
@@ -143,4 +170,19 @@ export interface ParsedAgentMd {
   // 元数据
   raw: string;
   fetchedAt: number;
+}
+
+// 单个身份的完整运行时状态
+export interface IdentityAcpState {
+  identityId: string;
+  account: ResolvedAcpAccount;
+  aidKey: string;                    // fullAid
+  sessionStates: Map<string, AcpSessionState>;
+  isRunning: boolean;
+  lastConnectedAt: number | null;
+  lastInboundAt: number | null;
+  lastOutboundAt: number | null;
+  reconnectAttempts: number;
+  lastError: string | null;
+  idleCheckInterval: ReturnType<typeof setInterval> | null;
 }

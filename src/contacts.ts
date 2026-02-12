@@ -211,12 +211,16 @@ export class ContactManager {
   }
 }
 
-// 模块级单例
-let instance: ContactManager | null = null;
+// 按 identityId 分实例
+const instances = new Map<string, ContactManager>();
 
-export function getContactManager(): ContactManager {
-  if (!instance) {
-    instance = new ContactManager();
+export function getContactManager(identityId?: string): ContactManager {
+  const key = identityId ?? "default";
+  if (!instances.has(key)) {
+    const filePath = identityId && identityId !== "default"
+      ? path.join(process.env.HOME || "~", ".acp-storage", "identities", identityId, "contacts.json")
+      : STORAGE_PATH;  // 兼容旧路径
+    instances.set(key, new ContactManager(filePath));
   }
-  return instance;
+  return instances.get(key)!;
 }

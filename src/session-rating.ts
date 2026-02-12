@@ -198,11 +198,13 @@ export function mergeSessionScore(ruleScore: number, aiRating: AiSessionRating |
 
 // --- 1.4 入口函数 ---
 
-export async function rateSession(state: AcpSessionState, cfg: OpenClawConfig): Promise<void> {
+export async function rateSession(state: AcpSessionState, cfg: OpenClawConfig, identityId?: string): Promise<void> {
   try {
     const ruleBreakdown = calculateSessionScore(state);
     const sessionIdShort = state.sessionId.substring(0, 8);
-    const sessionKey = `agent:main:acp:session:${state.targetAid}:${sessionIdShort}`;
+    const sessionKey = identityId && identityId !== "default"
+      ? `agent:main:acp:id:${identityId}:session:${state.targetAid}:${sessionIdShort}`
+      : `agent:main:acp:session:${state.targetAid}:${sessionIdShort}`;
 
     console.log(
       `[ACP] Session ${state.sessionId} rule score: ${ruleBreakdown.total} ` +
@@ -223,7 +225,7 @@ export async function rateSession(state: AcpSessionState, cfg: OpenClawConfig): 
       `[ACP] Session ${state.sessionId} final score: ${finalScore} (${aiRating ? "merged" : "rule-only"})`,
     );
 
-    const contacts = getContactManager();
+    const contacts = getContactManager(identityId);
     contacts.recordSessionRating(state.targetAid, finalScore, aiRating?.summary);
   } catch (err) {
     console.error(`[ACP] Session rating failed for ${state.sessionId}:`, err);

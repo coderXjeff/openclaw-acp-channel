@@ -65,7 +65,7 @@ export const acpStatusAdapter: ChannelStatusAdapter<ResolvedAcpAccount, AcpProbe
 
   buildAccountSnapshot: ({ account, cfg, runtime, probe }): ChannelAccountSnapshot => {
     const configured = Boolean(account.agentName?.trim());
-    const connectionSnapshot = getConnectionSnapshot();
+    const connectionSnapshot = getConnectionSnapshot(account.accountId);
 
     return {
       accountId: account.accountId,

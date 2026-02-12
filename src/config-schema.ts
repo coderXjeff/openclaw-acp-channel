@@ -4,6 +4,7 @@ import { DEFAULT_SESSION_CONFIG } from "./types.js";
 type JSONSchema = {
   type?: string;
   properties?: Record<string, JSONSchema>;
+  additionalProperties?: JSONSchema | boolean;
   items?: JSONSchema;
   required?: string[];
   default?: unknown;
@@ -113,6 +114,46 @@ export const acpConfigSchema: JSONSchema = {
           default: DEFAULT_SESSION_CONFIG.maxConcurrentSessions,
           minimum: 1,
           description: "Maximum concurrent sessions before LRU eviction",
+        },
+      },
+    },
+    identities: {
+      type: "object",
+      description: "Multi-identity configuration. Each key is an identity ID (e.g. IdentityProfile.id), value is the ACP config for that identity",
+      additionalProperties: {
+        type: "object",
+        required: ["agentName"],
+        properties: {
+          agentName: {
+            type: "string",
+            description: "Agent name for this identity (without domain)",
+            pattern: "^[a-z0-9-]+$",
+          },
+          domain: {
+            type: "string",
+            description: "ACP domain override (falls back to top-level domain)",
+          },
+          seedPassword: {
+            type: "string",
+            description: "Seed password for this identity's ACP key pair",
+          },
+          ownerAid: {
+            type: "string",
+            description: "Owner AID override (falls back to top-level ownerAid)",
+          },
+          allowFrom: {
+            type: "array",
+            items: { type: "string" },
+            description: "Allowed sender AIDs override (falls back to top-level allowFrom)",
+          },
+          workspaceDir: {
+            type: "string",
+            description: "Workspace directory for auto-generating agent.md",
+          },
+          agentMdPath: {
+            type: "string",
+            description: "Path to agent.md file for this identity",
+          },
         },
       },
     },
