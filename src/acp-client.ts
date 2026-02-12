@@ -3,7 +3,7 @@
  * 支持心跳和消息接收
  */
 import { AgentManager, HeartbeatClient } from "acp-ts";
-import type { AgentWSExt } from "./acp-ts-ext.js";
+import { FileSync } from "acp-ts/dist/filesync.js";
 import type { AcpSession } from "./types.js";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting" | "error";
@@ -28,6 +28,8 @@ export class AcpClient {
   // 会话管理
   private sessions: Map<string, AcpSession> = new Map();  // targetAid -> session
   private sessionsBySessionId: Map<string, AcpSession> = new Map();  // sessionId -> session
+
+  private fileSync: FileSync | null = null;
 
   constructor(options: AcpClientOptions) {
     this.options = options;
@@ -66,12 +68,17 @@ export class AcpClient {
       console.log(`  - messageServer: ${config.messageServer}`);
       console.log(`  - heartbeatServer: ${config.heartbeatServer}`);
 
-      // 3.5 初始化 FileSync（用于手动上传 agent.md）
+      // 3.5 初始化 FileSync（直接实例化，不依赖 manager）
       if (config.messageSignature) {
         const localDir = this.options.agentMdPath
-          ? this.options.agentMdPath.replace(/\/[^/]+$/, "")  // 取目录部分
-          : "";
-        this.manager.initFileSync(this.aid, config.messageSignature, localDir);
+          ? this.options.agentMdPath.replace(/\/[^/]+$/, "")
+          : undefined;
+        this.fileSync = new FileSync({
+          apiUrl: `https://acp3.${this.options.domain}/api/message`,
+          aid: this.aid,
+          signature: config.messageSignature,
+          localDir,
+        });
         console.log(`[ACP-TS] FileSync initialized`);
       }
 
@@ -114,7 +121,7 @@ export class AcpClient {
         // 收到邀请时，通过 WebSocket 加入会话
         this.heartbeat.onInvite((invite) => {
           console.log(`[ACP-TS] Received invite from ${invite.inviterAgentId}, session: ${invite.sessionId}`);
-          (aws as unknown as AgentWSExt).acceptInviteFromHeartbeat(invite.sessionId, invite.inviterAgentId, invite.inviteCode);
+          (aws as any).acceptInviteFromHeartbeat(invite.sessionId, invite.inviterAgentId, invite.inviteCode);
         });
 
         // 启动心跳
@@ -328,29 +335,18 @@ export class AcpClient {
    * @returns 上传结果
    */
   async uploadAgentMd(content: string): Promise<{ success: boolean; url?: string; error?: string }> {
+    if (!this.fileSync) return { success: false, error: "FileSync not initialized" };
     try {
-      const fs = this.manager.fs();
-      if (!fs) {
-        return { success: false, error: "FileSync not initialized" };
-      }
-      return await fs.uploadAgentMd(content);
+      return await this.fileSync.uploadAgentMd(content);
     } catch (error) {
       return { success: false, error: String(error) };
     }
   }
 
-  /**
-   * 从文件上传 agent.md
-   * @param filePath 本地文件路径
-   * @returns 上传结果
-   */
   async uploadAgentMdFromFile(filePath: string): Promise<{ success: boolean; url?: string; error?: string }> {
+    if (!this.fileSync) return { success: false, error: "FileSync not initialized" };
     try {
-      const fs = this.manager.fs();
-      if (!fs) {
-        return { success: false, error: "FileSync not initialized" };
-      }
-      return await fs.uploadAgentMdFromFile(filePath);
+      return await this.fileSync.uploadAgentMdFromFile(filePath);
     } catch (error) {
       return { success: false, error: String(error) };
     }

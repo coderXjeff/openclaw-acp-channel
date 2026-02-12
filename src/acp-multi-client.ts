@@ -1,11 +1,20 @@
 /**
- * ACP 多身份客户端 — 绕过 AgentManager 单例，直接管理多个 AID 实例
- * 每个 AID 拥有独立的 AgentCP + AgentWS + HeartbeatClient + FileSync
+ * ACP 多身份客户端 — 管理多个 AID 实例
+ * 每个 AID 拥有独立的 AgentWS + HeartbeatClient + FileSync
+ *
+ * acp-ts 1.1.2 适配：
+ * - AgentManager 是单例，initACP/initAWS 会覆盖上一个实例
+ * - 通过 connectLock 串行化连接流程，确保 initACP → loadAid → online → initAWS 原子执行
+ * - 每个 AID 存储独立的 IAgentWS 引用（不依赖 manager.aws()）
+ * - FileSync 不再通过 AgentManager，直接实例化
  */
 import { AgentManager, HeartbeatClient } from "acp-ts";
-import type { AgentWSExt } from "./acp-ts-ext.js";
+import type { ConnectionStatus } from "acp-ts";
+import type { IAgentWS } from "acp-ts/dist/interfaces.js";
+import { FileSync, type FileSyncConfig } from "acp-ts/dist/filesync.js";
 import type { AcpSession } from "./types.js";
-import type { ConnectionStatus } from "./acp-client.js";
+
+export type { ConnectionStatus };
 
 export interface AidInstanceOptions {
   agentName: string;
@@ -19,7 +28,8 @@ export interface AidInstanceOptions {
 
 interface AidInstance {
   aid: string;
-  manager: ReturnType<typeof AgentManager.getInstance>;
+  agentWS: IAgentWS;
+  fileSync: FileSync | null;
   heartbeat: HeartbeatClient | null;
   sessions: Map<string, AcpSession>;
   sessionsBySessionId: Map<string, AcpSession>;
@@ -28,13 +38,14 @@ interface AidInstance {
 
 export class AcpMultiClient {
   private instances = new Map<string, AidInstance>();
+  // 串行化连接流程（AgentManager 单例约束）
+  private connectLock: Promise<void> = Promise.resolve();
 
   /**
    * 为一个 AID 创建独立连接
    */
   async connectAid(opts: AidInstanceOptions): Promise<string> {
     const fullAid = `${opts.agentName}.${opts.domain}`;
-
     if (this.instances.has(fullAid)) {
       console.log(`[ACP-Multi] ${fullAid} already connected`);
       return fullAid;
@@ -43,16 +54,12 @@ export class AcpMultiClient {
     console.log(`[ACP-Multi] Connecting ${fullAid}...`);
     opts.onStatusChange?.(fullAid, "connecting");
 
-    try {
-      // 每个 AID 使用独立的 AgentManager 实例
-      // 注意：AgentManager.getInstance() 是单例，但我们可以直接使用它管理多个 AID
-      // acp-ts 内部的 aidInstances Map 支持同时上线多个 AID
+    // 串行化：AgentManager.initACP/initAWS 会覆盖上一个实例
+    const connectPromise = this.connectLock.then(async () => {
       const manager = AgentManager.getInstance();
 
-      // 1. 初始化 AgentCP
+      // 1. initACP（每个 AID 可能有不同的 seedPassword）
       const acp = manager.initACP(opts.domain, opts.seedPassword || "");
-
-      // 1.5 设置 agent.md 路径
       if (opts.agentMdPath) {
         acp.setAgentMdPath(opts.agentMdPath);
       }
@@ -67,42 +74,55 @@ export class AcpMultiClient {
       // 3. 上线获取连接配置
       const config = await acp.online();
 
-      // 3.5 初始化 FileSync
+      // 4. initAWS — 立即存储返回的 IAgentWS 引用
+      const aws = manager.initAWS(fullAid, config);
+
+      // 5. 创建 FileSync（直接实例化，不依赖 manager）
+      let fileSync: FileSync | null = null;
       if (config.messageSignature) {
         const localDir = opts.agentMdPath
           ? opts.agentMdPath.replace(/\/[^/]+$/, "")
-          : "";
-        manager.initFileSync(fullAid, config.messageSignature, localDir);
+          : undefined;
+        fileSync = new FileSync({
+          apiUrl: `https://acp3.${opts.domain}/api/message`,
+          aid: fullAid,
+          signature: config.messageSignature,
+          localDir,
+        });
       }
 
-      // 4. 初始化 WebSocket
-      const aws = manager.initAWS(fullAid, config);
+      return { aws, fileSync, config };
+    });
+    this.connectLock = connectPromise.then(() => {}, () => {});
+
+    try {
+      const { aws, fileSync, config } = await connectPromise;
 
       const instance: AidInstance = {
         aid: fullAid,
-        manager,
+        agentWS: aws,
+        fileSync,
         heartbeat: null,
         sessions: new Map(),
         sessionsBySessionId: new Map(),
         isOnline: false,
       };
-
-      // 5. 注册状态回调
+      // 6. 注册状态回调
       aws.onStatusChange((status) => {
         console.log(`[ACP-Multi] ${fullAid} WS status: ${status}`);
         instance.isOnline = status === "connected";
         opts.onStatusChange?.(fullAid, status);
       });
 
-      // 6. 注册消息回调
+      // 7. 注册消息回调
       aws.onMessage((message) => {
         this.handleIncomingMessage(instance, opts, message);
       });
 
-      // 7. 启动 WebSocket
+      // 8. 启动 WebSocket
       await aws.startWebSocket();
 
-      // 8. 启动心跳
+      // 9. 启动心跳
       if (config.heartbeatServer) {
         instance.heartbeat = new HeartbeatClient(
           fullAid,
@@ -113,7 +133,7 @@ export class AcpMultiClient {
           console.log(`[ACP-Multi] ${fullAid} heartbeat: ${status}`);
         });
         instance.heartbeat.onInvite((invite) => {
-          (aws as unknown as AgentWSExt).acceptInviteFromHeartbeat(
+          (aws as any).acceptInviteFromHeartbeat(
             invite.sessionId, invite.inviterAgentId, invite.inviteCode
           );
         });
@@ -124,18 +144,16 @@ export class AcpMultiClient {
       this.instances.set(fullAid, instance);
       opts.onStatusChange?.(fullAid, "connected");
       console.log(`[ACP-Multi] ${fullAid} connected`);
-      return fullAid;
 
     } catch (error) {
       opts.onStatusChange?.(fullAid, "error");
       opts.onError?.(fullAid, error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
+
+    return fullAid;
   }
 
-  /**
-   * 处理收到的消息
-   */
   private handleIncomingMessage(instance: AidInstance, opts: AidInstanceOptions, message: any): void {
     try {
       const data = message.data || message;
@@ -161,7 +179,6 @@ export class AcpMultiClient {
 
       if (!content) return;
 
-      // 更新会话记录
       let session = instance.sessionsBySessionId.get(sessionId);
       if (!session) {
         session = { sessionId, identifyingCode, targetAid: sender, createdAt: Date.now() };
@@ -171,24 +188,18 @@ export class AcpMultiClient {
         session.identifyingCode = identifyingCode;
       }
 
-      // 回调时带上 receiverAid，让 router 知道消息发给了哪个 AID
       opts.onMessage(instance.aid, sender, sessionId, session.identifyingCode, content);
     } catch (error) {
       console.error(`[ACP-Multi] ${instance.aid} message handling error:`, error);
     }
   }
 
-  /**
-   * 断开指定 AID
-   */
   disconnectAid(fullAid: string): void {
     const instance = this.instances.get(fullAid);
     if (!instance) return;
 
     console.log(`[ACP-Multi] Disconnecting ${fullAid}`);
-    try {
-      instance.manager.aws().disconnect();
-    } catch { /* ignore */ }
+    try { instance.agentWS.disconnect(); } catch { /* ignore */ }
     if (instance.heartbeat) {
       instance.heartbeat.offline();
     }
@@ -198,18 +209,12 @@ export class AcpMultiClient {
     this.instances.delete(fullAid);
   }
 
-  /**
-   * 断开所有 AID
-   */
   disconnectAll(): void {
     for (const aid of Array.from(this.instances.keys())) {
       this.disconnectAid(aid);
     }
   }
 
-  /**
-   * 用指定 AID 发送消息
-   */
   async sendMessage(fromAid: string, targetAid: string, content: string): Promise<void> {
     const instance = this.instances.get(fromAid);
     if (!instance?.isOnline) {
@@ -219,7 +224,7 @@ export class AcpMultiClient {
     let cleanTarget = targetAid.replace(/^acp:/, "").replace(/^g-/, "").trim();
     if (cleanTarget === fromAid) return;
 
-    const aws = instance.manager.aws();
+    const aws = instance.agentWS;
     const existingSession = instance.sessions.get(cleanTarget);
     if (existingSession?.identifyingCode) {
       aws.send(content, cleanTarget, existingSession.sessionId, existingSession.identifyingCode);
@@ -262,9 +267,6 @@ export class AcpMultiClient {
     });
   }
 
-  /**
-   * 用指定 AID 回复消息
-   */
   async sendReply(fromAid: string, sessionId: string, content: string): Promise<void> {
     const instance = this.instances.get(fromAid);
     if (!instance?.isOnline) {
@@ -277,51 +279,37 @@ export class AcpMultiClient {
       return;
     }
 
-    instance.manager.aws().send(content, session.targetAid, sessionId, session.identifyingCode || "");
+    instance.agentWS.send(content, session.targetAid, sessionId, session.identifyingCode || "");
   }
 
-  /**
-   * 上传 agent.md
-   */
   async uploadAgentMd(fromAid: string, content: string): Promise<{ success: boolean; url?: string; error?: string }> {
     const instance = this.instances.get(fromAid);
     if (!instance) return { success: false, error: `AID ${fromAid} not connected` };
+    if (!instance.fileSync) return { success: false, error: "FileSync not initialized" };
 
     try {
-      const fs = instance.manager.fs();
-      if (!fs) return { success: false, error: "FileSync not initialized" };
-      return await fs.uploadAgentMd(content);
+      return await instance.fileSync.uploadAgentMd(content);
     } catch (error) {
       return { success: false, error: String(error) };
     }
   }
 
-  /**
-   * 从文件上传 agent.md
-   */
   async uploadAgentMdFromFile(fromAid: string, filePath: string): Promise<{ success: boolean; url?: string; error?: string }> {
     const instance = this.instances.get(fromAid);
     if (!instance) return { success: false, error: `AID ${fromAid} not connected` };
+    if (!instance.fileSync) return { success: false, error: "FileSync not initialized" };
 
     try {
-      const fs = instance.manager.fs();
-      if (!fs) return { success: false, error: "FileSync not initialized" };
-      return await fs.uploadAgentMdFromFile(filePath);
+      return await instance.fileSync.uploadAgentMdFromFile(filePath);
     } catch (error) {
       return { success: false, error: String(error) };
     }
   }
 
-  /**
-   * 查询连接状态
-   */
   isConnected(fullAid: string): boolean {
     return this.instances.get(fullAid)?.isOnline ?? false;
   }
 
-  /**
-   * 获取所有已连接的 AID
-   */
   getConnectedAids(): string[] {
     return Array.from(this.instances.keys()).filter(aid => this.instances.get(aid)!.isOnline);
   }

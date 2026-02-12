@@ -6,7 +6,7 @@ import type { ResolvedAcpAccount, AcpChannelConfig, IdentityAcpState } from "./t
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import type { ChannelGatewayContext, ChannelLogSink } from "./plugin-types.js";
 import { AcpMultiClient, type AidInstanceOptions } from "./acp-multi-client.js";
-import type { ConnectionStatus } from "./acp-client.js";
+import type { ConnectionStatus } from "./acp-multi-client.js";
 import { getContactManager } from "./contacts.js";
 
 export class AcpIdentityRouter {
