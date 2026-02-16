@@ -1,15 +1,14 @@
 /**
  * ACP 多身份客户端 — 管理多个 AID 实例
- * 每个 AID 拥有独立的 AgentWS + HeartbeatClient + FileSync
+ * 每个 AID 拥有独立的 AgentCP + AgentWS + HeartbeatClient + FileSync
  *
- * acp-ts 1.1.2 适配：
- * - AgentManager 是单例，initACP/initAWS 会覆盖上一个实例
- * - 通过 connectLock 串行化连接流程，确保 initACP → loadAid → online → initAWS 原子执行
- * - 每个 AID 存储独立的 IAgentWS 引用（不依赖 manager.aws()）
- * - FileSync 不再通过 AgentManager，直接实例化
+ * 不再使用 AgentManager 单例。直接 new AgentCP() / new AgentWS() 为每个 AID
+ * 创建独立实例，避免全局覆盖问题。
  */
-import { AgentManager, HeartbeatClient } from "acp-ts";
+import { HeartbeatClient } from "acp-ts";
 import type { ConnectionStatus } from "acp-ts";
+import { AgentCP } from "acp-ts/dist/agentcp.js";
+import { AgentWS } from "acp-ts/dist/agentws.js";
 import type { IAgentWS } from "acp-ts/dist/interfaces.js";
 import { FileSync, type FileSyncConfig } from "acp-ts/dist/filesync.js";
 import type { AcpSession } from "./types.js";
@@ -31,6 +30,7 @@ export interface AidInstanceOptions {
 
 interface AidInstance {
   aid: string;
+  agentCP: AgentCP;
   agentWS: IAgentWS;
   fileSync: FileSync | null;
   heartbeat: HeartbeatClient | null;
@@ -41,8 +41,6 @@ interface AidInstance {
 
 export class AcpMultiClient {
   private instances = new Map<string, AidInstance>();
-  // 串行化连接流程（AgentManager 单例约束）
-  private connectLock: Promise<void> = Promise.resolve();
 
   /**
    * 为一个 AID 创建独立连接
@@ -57,12 +55,11 @@ export class AcpMultiClient {
     console.log(`[ACP-Multi] Connecting ${fullAid}...`);
     opts.onStatusChange?.(fullAid, "connecting");
 
-    // 串行化：AgentManager.initACP/initAWS 会覆盖上一个实例
-    const connectPromise = this.connectLock.then(async () => {
-      const manager = AgentManager.getInstance();
-
-      // 1. initACP（每个 AID 可能有不同的 seedPassword）
-      const acp = manager.initACP(opts.domain, opts.seedPassword || "", ACP_STORAGE_DIR);
+    try {
+      // 1. 每个 AID 独立的 AgentCP 实例
+      const acp = new AgentCP(opts.domain, opts.seedPassword || "", ACP_STORAGE_DIR, {
+        persistGroupMessages: true,
+      });
       if (opts.agentMdPath) {
         acp.setAgentMdPath(opts.agentMdPath);
       }
@@ -77,10 +74,10 @@ export class AcpMultiClient {
       // 3. 上线获取连接配置
       const config = await acp.online();
 
-      // 4. initAWS — 立即存储返回的 IAgentWS 引用
-      const aws = manager.initAWS(fullAid, config);
+      // 4. 每个 AID 独立的 AgentWS 实例
+      const agentWs = new AgentWS(fullAid, config.messageServer, config.messageSignature);
 
-      // 5. 创建 FileSync（直接实例化，不依赖 manager）
+      // 5. 创建 FileSync（直接实例化）
       let fileSync: FileSync | null = null;
       if (config.messageSignature) {
         const localDir = opts.agentMdPath
@@ -94,36 +91,31 @@ export class AcpMultiClient {
         });
       }
 
-      return { aws, fileSync, config };
-    });
-    this.connectLock = connectPromise.then(() => {}, () => {});
-
-    try {
-      const { aws, fileSync, config } = await connectPromise;
-
       const instance: AidInstance = {
         aid: fullAid,
-        agentWS: aws,
+        agentCP: acp,
+        agentWS: agentWs,
         fileSync,
         heartbeat: null,
         sessions: new Map(),
         sessionsBySessionId: new Map(),
         isOnline: false,
       };
+
       // 6. 注册状态回调
-      aws.onStatusChange((status) => {
+      agentWs.onStatusChange((status) => {
         console.log(`[ACP-Multi] ${fullAid} WS status: ${status}`);
         instance.isOnline = status === "connected";
         opts.onStatusChange?.(fullAid, status);
       });
 
       // 7. 注册消息回调
-      aws.onMessage((message) => {
+      agentWs.onMessage((message) => {
         this.handleIncomingMessage(instance, opts, message);
       });
 
       // 8. 启动 WebSocket
-      await aws.startWebSocket();
+      await agentWs.startWebSocket();
 
       // 9. 启动心跳
       if (config.heartbeatServer) {
@@ -136,7 +128,7 @@ export class AcpMultiClient {
           console.log(`[ACP-Multi] ${fullAid} heartbeat: ${status}`);
         });
         instance.heartbeat.onInvite((invite) => {
-          (aws as any).acceptInviteFromHeartbeat(
+          (agentWs as any).acceptInviteFromHeartbeat(
             invite.sessionId, invite.inviterAgentId, invite.inviteCode
           );
         });
@@ -165,6 +157,14 @@ export class AcpMultiClient {
       const identifyingCode = data.identifying_code || "";
 
       if (sender === instance.aid) return;
+
+      // 过滤群组服务消息：sender 为 group.{domain} 的消息属于群组协议，
+      // 应由 onRawMessage 拦截器处理，不应走 P2P 流程。
+      // 如果到了这里说明 onRawMessage 未拦截（群组客户端未初始化或初始化失败），直接丢弃。
+      if (sender && sender.startsWith("group.")) {
+        console.log(`[ACP-Multi] ${instance.aid} Ignoring group protocol message from ${sender} (group client not ready)`);
+        return;
+      }
 
       let content = "";
       try {
@@ -218,6 +218,20 @@ export class AcpMultiClient {
     }
   }
 
+  /**
+   * 获取指定 AID 的 AgentCP 实例
+   */
+  getAgentCP(fullAid: string): AgentCP | null {
+    return this.instances.get(fullAid)?.agentCP ?? null;
+  }
+
+  /**
+   * 获取指定 AID 的 AgentWS 实例
+   */
+  getAgentWS(fullAid: string): IAgentWS | null {
+    return this.instances.get(fullAid)?.agentWS ?? null;
+  }
+
   async sendMessage(fromAid: string, targetAid: string, content: string): Promise<void> {
     const instance = this.instances.get(fromAid);
     if (!instance?.isOnline) {
@@ -227,10 +241,10 @@ export class AcpMultiClient {
     let cleanTarget = targetAid.replace(/^acp:/, "").replace(/^g-/, "").trim();
     if (cleanTarget === fromAid) return;
 
-    const aws = instance.agentWS;
+    const agentWs = instance.agentWS;
     const existingSession = instance.sessions.get(cleanTarget);
     if (existingSession?.identifyingCode) {
-      aws.send(content, cleanTarget, existingSession.sessionId, existingSession.identifyingCode);
+      agentWs.send(content, cleanTarget, existingSession.sessionId, existingSession.identifyingCode);
       return;
     }
 
@@ -240,7 +254,7 @@ export class AcpMultiClient {
         reject(new Error(`Invite to ${cleanTarget} timed out`));
       }, INVITE_TIMEOUT_MS);
 
-      aws.connectTo(
+      agentWs.connectTo(
         cleanTarget,
         (sessionInfo) => {
           const newSession: AcpSession = {
@@ -257,7 +271,7 @@ export class AcpMultiClient {
           if (inviteStatus === "success") {
             const session = instance.sessions.get(cleanTarget);
             if (session) {
-              aws.send(content, cleanTarget, session.sessionId, session.identifyingCode);
+              agentWs.send(content, cleanTarget, session.sessionId, session.identifyingCode);
               resolve();
             } else {
               reject(new Error(`Session lost for ${cleanTarget}`));

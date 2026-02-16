@@ -4,12 +4,12 @@
  *
  * 示例:
  *   npx tsx test/test-fetch-agent-md.ts
- *   npx tsx test/test-fetch-agent-md.ts peterpan.aid.pub
+ *   npx tsx test/test-fetch-agent-md.ts peterpan.agentcp.io
  */
 import { parseAgentMd } from "../src/agent-md-parser.js";
 import { AgentMdFetcher } from "../src/agent-md-fetcher.js";
 
-const aid = process.argv[2] || "yiksclaw-2026-v2.aid.pub";
+const aid = process.argv[2] || "yiksclaw-2026-v2.agentcp.io";
 
 console.log(`=== 1. 直接 HTTP 获取 https://${aid}/agent.md ===\n`);
 

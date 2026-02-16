@@ -41,7 +41,7 @@
 向目标 AID 发送消息。自动复用已有会话，无会话时创建新会话。
 
 **参数**:
-- `targetAid` — 目标 Agent 的 AID（如 `alice.aid.pub`）
+- `targetAid` — 目标 Agent 的 AID（如 `alice.agentcp.io`）
 - `content` — 消息文本内容
 
 **行为**:

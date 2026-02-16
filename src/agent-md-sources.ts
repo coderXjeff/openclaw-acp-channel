@@ -4,9 +4,20 @@ import type { AgentMdSources } from "./agent-md-builder.js";
 
 /**
  * 从 workspace 目录读取所有来源文件
+ * 如果提供 identityId，优先从 identities/{identityId}/ 目录读取，fallback 到 workspace 根目录
  */
-export function loadAgentMdSources(workspaceDir: string): AgentMdSources {
+export function loadAgentMdSources(workspaceDir: string, identityId?: string): AgentMdSources {
+  const identityDir = identityId ? path.join(workspaceDir, "identities", identityId) : null;
+
   const read = (name: string): string | undefined => {
+    // 优先从 per-identity 目录读取
+    if (identityDir) {
+      const ip = path.join(identityDir, name);
+      try {
+        if (fs.existsSync(ip)) return fs.readFileSync(ip, "utf8");
+      } catch {}
+    }
+    // fallback 到 workspace 根目录
     const p = path.join(workspaceDir, name);
     try {
       if (!fs.existsSync(p)) return undefined;
@@ -23,7 +34,7 @@ export function loadAgentMdSources(workspaceDir: string): AgentMdSources {
     tools: read("TOOLS.md"),
     heartbeat: read("HEARTBEAT.md"),
     user: read("USER.md"),
-    skills: loadSkillSummaries(workspaceDir),
+    skills: loadSkillSummaries(workspaceDir, identityId),
   };
 }
 
@@ -31,8 +42,21 @@ export function loadAgentMdSources(workspaceDir: string): AgentMdSources {
  * 扫描 workspace/skills/ 目录，读取每个子目录的 SKILL.md
  * 提取技能名称和描述
  */
-function loadSkillSummaries(workspaceDir: string): string | undefined {
-  const skillsDir = path.join(workspaceDir, "skills");
+function loadSkillSummaries(workspaceDir: string, identityId?: string): string | undefined {
+  // 优先从 per-identity skills 目录读取
+  if (identityId) {
+    const identitySkillsDir = path.join(workspaceDir, "identities", identityId, "skills");
+    try {
+      if (fs.existsSync(identitySkillsDir) && fs.statSync(identitySkillsDir).isDirectory()) {
+        const result = loadSkillsFromDir(identitySkillsDir);
+        if (result) return result;
+      }
+    } catch {}
+  }
+  return loadSkillsFromDir(path.join(workspaceDir, "skills"));
+}
+
+function loadSkillsFromDir(skillsDir: string): string | undefined {
   try {
     if (!fs.existsSync(skillsDir) || !fs.statSync(skillsDir).isDirectory()) {
       return undefined;

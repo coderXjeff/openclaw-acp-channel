@@ -8,6 +8,7 @@ import { setAcpRuntime } from "./src/runtime.js";
 import { updateWorkspaceDir } from "./src/workspace.js";
 import { checkAndUploadAgentMd } from "./src/monitor.js";
 import { createFetchAgentMdTool, createManageContactsTool } from "./src/tools.js";
+import { createGroupTool } from "./src/group-tools.js";
 import { createSyncCommand, createStatusCommand } from "./src/commands.js";
 
 const plugin = {
@@ -47,6 +48,7 @@ const plugin = {
     // 注册 AI 工具
     api.registerTool(createFetchAgentMdTool(), { names: ["acp_fetch_agent_md"] });
     api.registerTool(createManageContactsTool(), { names: ["acp_manage_contacts"] });
+    api.registerTool(createGroupTool(), { names: ["acp_group"] });
 
     // 注册用户命令
     api.registerCommand(createSyncCommand());

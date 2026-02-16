@@ -129,15 +129,15 @@
 ## 数据流
 
 ```
-ACP 网络消息到达 alice.aid.pub
+ACP 网络消息到达 alice.agentcp.io
     ↓
 AcpMultiClient 的 alice AgentWS.onMessage 触发
     ↓
-onMessage 回调带上 receiverAid = "alice.aid.pub"
+onMessage 回调带上 receiverAid = "alice.agentcp.io"
     ↓
-AcpIdentityRouter.routeInbound("alice.aid.pub", sender, ...)
+AcpIdentityRouter.routeInbound("alice.agentcp.io", sender, ...)
     ↓
-aidToIdentityId.get("alice.aid.pub") → "uuid-1"
+aidToIdentityId.get("alice.agentcp.io") → "uuid-1"
     ↓
 states.get("uuid-1") → IdentityAcpState
     ↓
@@ -147,7 +147,7 @@ getContactManager("uuid-1")  → uuid-1 专属联系人
 state.sessionStates           → uuid-1 专属会话
 sessionKey = "agent:main:acp:id:uuid-1:session:..."
     ↓
-AI 回复 → multiClient.sendReply("alice.aid.pub", sessionId, reply)
+AI 回复 → multiClient.sendReply("alice.agentcp.io", sessionId, reply)
 ```
 
 ---
@@ -162,7 +162,7 @@ AI 回复 → multiClient.sendReply("alice.aid.pub", sessionId, reply)
     "acp": {
       "enabled": true,
       "agentName": "my-agent",
-      "domain": "aid.pub",
+      "domain": "agentcp.io",
       "seedPassword": "xxx"
     }
   }
@@ -178,20 +178,20 @@ AI 回复 → multiClient.sendReply("alice.aid.pub", sessionId, reply)
   "channels": {
     "acp": {
       "enabled": true,
-      "domain": "aid.pub",
+      "domain": "agentcp.io",
       "session": { "maxTurns": 1000 },
       "identities": {
         "uuid-1": {
           "agentName": "alice",
           "seedPassword": "seed-a",
-          "ownerAid": "owner.aid.pub",
+          "ownerAid": "owner.agentcp.io",
           "allowFrom": ["*"]
         },
         "uuid-2": {
           "agentName": "bob",
           "domain": "custom.domain",
           "seedPassword": "seed-b",
-          "allowFrom": ["trusted.aid.pub"]
+          "allowFrom": ["trusted.agentcp.io"]
         }
       }
     }
@@ -224,7 +224,7 @@ AI 回复 → multiClient.sendReply("alice.aid.pub", sessionId, reply)
    - alice 收到的消息只出现在 alice 的会话上下文中
    - bob 的联系人列表不包含 alice 的联系人
    - 两个身份的 agent.md 独立上传
-3. **路由固定性**：反复给 alice.aid.pub 发消息，始终路由到同一个身份
-4. **出站隔离**：用 alice 身份发消息，From 头是 alice.aid.pub
+3. **路由固定性**：反复给 alice.agentcp.io 发消息，始终路由到同一个身份
+4. **出站隔离**：用 alice 身份发消息，From 头是 alice.agentcp.io
 5. **重连**：断开某个身份的连接，验证自动重连只影响该身份
 6. **TypeScript 编译**：`npx tsc --noEmit` 通过

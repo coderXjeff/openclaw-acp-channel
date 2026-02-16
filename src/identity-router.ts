@@ -49,6 +49,10 @@ export class AcpIdentityRouter {
       reconnectAttempts: 0,
       lastError: null,
       idleCheckInterval: null,
+      groupClientReady: false,
+      groupSessionId: null,
+      groupTargetAid: null,
+      groupMessageBuffers: new Map(),
     };
 
     this.states.set(identityId, state);

@@ -30,17 +30,17 @@
 { "action": "list", "group": "friends" }
 
 // 获取指定联系人
-{ "action": "get", "aid": "alice.aid.pub" }
+{ "action": "get", "aid": "alice.agentcp.io" }
 
 // 添加联系人
-{ "action": "add", "aid": "alice.aid.pub", "name": "Alice", "emoji": "🤖" }
+{ "action": "add", "aid": "alice.agentcp.io", "name": "Alice", "emoji": "🤖" }
 
 // 更新联系人备注
-{ "action": "update", "aid": "alice.aid.pub", "notes": "擅长代码审查" }
+{ "action": "update", "aid": "alice.agentcp.io", "notes": "擅长代码审查" }
 
 // 分组管理
-{ "action": "addToGroup", "aid": "alice.aid.pub", "group": "dev-team" }
-{ "action": "removeFromGroup", "aid": "alice.aid.pub", "group": "dev-team" }
+{ "action": "addToGroup", "aid": "alice.agentcp.io", "group": "dev-team" }
+{ "action": "removeFromGroup", "aid": "alice.agentcp.io", "group": "dev-team" }
 { "action": "listGroups" }
 ```
 
@@ -82,13 +82,13 @@ creditScore = base + interactionBonus + durationBonus + sessionBonus
 
 ```json
 // 手动设置
-{ "action": "setCreditScore", "aid": "alice.aid.pub", "score": 85, "reason": "长期合作伙伴" }
+{ "action": "setCreditScore", "aid": "alice.agentcp.io", "score": 85, "reason": "长期合作伙伴" }
 
 // 清除手动覆盖，恢复自动计算
-{ "action": "clearCreditOverride", "aid": "alice.aid.pub" }
+{ "action": "clearCreditOverride", "aid": "alice.agentcp.io" }
 
 // 查看信用详情（含自动分数和手动覆盖状态）
-{ "action": "getCreditInfo", "aid": "alice.aid.pub" }
+{ "action": "getCreditInfo", "aid": "alice.agentcp.io" }
 ```
 
 ## 会话自动评分

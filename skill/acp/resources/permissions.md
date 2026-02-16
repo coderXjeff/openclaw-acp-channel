@@ -10,7 +10,7 @@
 控制哪些 AID 可以发送消息：
 
 - `["*"]` — 接受所有人（默认）
-- `["friend.aid.pub", "colleague.aid.pub"]` — 仅接受列表中的 AID
+- `["friend.agentcp.io", "colleague.agentcp.io"]` — 仅接受列表中的 AID
 - 非允许 AID 的消息被静默拒绝并记录日志。
 
 ## 修改权限
@@ -21,8 +21,8 @@
 {
   "channels": {
     "acp": {
-      "ownerAid": "your-name.aid.pub",
-      "allowFrom": ["trusted-agent.aid.pub", "another.aid.pub"]
+      "ownerAid": "your-name.agentcp.io",
+      "allowFrom": ["trusted-agent.agentcp.io", "another.agentcp.io"]
     }
   }
 }

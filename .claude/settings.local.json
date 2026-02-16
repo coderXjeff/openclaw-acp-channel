@@ -20,7 +20,13 @@
       "Bash(ls:*)",
       "Bash(node -e \"const c=JSON.parse\\(require\\(''fs''\\).readFileSync\\(process.env.HOME+''/.openclaw/openclaw.json'',''utf8''\\)\\);const a=c.channels?.acp;const ids=a?.identities;const p=c.plugins?.entries?.acp;if\\(a?.enabled&&ids&&Object.keys\\(ids\\).length>0&&p?.enabled\\){const k=Object.keys\\(ids\\)[0];const e=ids[k];console.log\\(''Config OK \\(multi-identity mode\\)''\\);console.log\\(''Identity:'',k\\);console.log\\(''AID:'',e.agentName+''.''+a.domain\\)}else console.log\\(''ERROR''\\)\")",
       "Bash(node -e:*)",
-      "Bash(npm info:*)"
+      "Bash(npm info:*)",
+      "Bash(npm test:*)",
+      "Bash(python3:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npm run build:*)",
+      "Bash(npm run:*)",
+      "Bash(npm ls:*)"
     ]
   }
 }

@@ -30,8 +30,8 @@ export const acpConfigSchema: JSONSchema = {
     },
     domain: {
       type: "string",
-      default: "aid.pub",
-      description: "ACP domain (e.g., aid.pub)",
+      default: "agentcp.io",
+      description: "ACP domain (e.g., agentcp.io)",
     },
     seedPassword: {
       type: "string",
@@ -39,7 +39,7 @@ export const acpConfigSchema: JSONSchema = {
     },
     ownerAid: {
       type: "string",
-      description: "Owner's AID (e.g., 'owner-name.aid.pub')",
+      description: "Owner's AID (e.g., 'owner-name.agentcp.io')",
     },
     allowFrom: {
       type: "array",
@@ -114,6 +114,12 @@ export const acpConfigSchema: JSONSchema = {
           default: DEFAULT_SESSION_CONFIG.maxConcurrentSessions,
           minimum: 1,
           description: "Maximum concurrent sessions before LRU eviction",
+        },
+        groupMessageIntervalMs: {
+          type: "number",
+          default: DEFAULT_SESSION_CONFIG.groupMessageIntervalMs,
+          minimum: 5000,
+          description: "Interval (ms) for batching group messages before dispatching to agent",
         },
       },
     },

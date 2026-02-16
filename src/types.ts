@@ -2,7 +2,7 @@
 export interface AcpChannelConfig {
   enabled: boolean;
   agentName: string;        // Agent 名称 (不含域名)
-  domain: string;           // ACP 域名，如 aid.pub
+  domain: string;           // ACP 域名，如 agentcp.io
   seedPassword?: string;    // 种子密码
   ownerAid?: string;        // 主人的 AID
   allowFrom?: string[];     // 允许接收消息的 AID 列表
@@ -59,6 +59,9 @@ export interface AcpSessionConfig {
   // 第四层：并发控制 - LRU 淘汰
   maxConcurrentSessions?: number;     // 最大并发会话数，默认 400，超出时淘汰最久未活动的会话
   maxSessionsPerTarget?: number;      // 同一 targetAid 最大并发会话数，默认 10，超出时淘汰最久未活动的会话
+
+  // 群组消息
+  groupMessageIntervalMs?: number;    // 群消息批量发送给 agent 的间隔(ms)，默认 60000
 }
 
 // 解析后的账户信息
@@ -130,7 +133,21 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   // 第四层
   maxConcurrentSessions: 400,       // 最大 400 个并发会话
   maxSessionsPerTarget: 10,         // 同一 targetAid 最大 10 个并发会话
+  // 群组消息
+  groupMessageIntervalMs: 60000,    // 群消息批量发送间隔，默认 60 秒
 };
+
+/** 群组消息缓冲区 */
+export interface GroupMessageBuffer {
+  groupId: string;
+  messages: { sender: string; content: string; timestamp: number; msg_id?: number }[];
+  lastDispatchAt: number;
+  flushTimer: ReturnType<typeof setTimeout> | null;
+  dispatching: boolean;
+  lastPulledMsgId: number;  // 上次 pullMessages 拉到的最大 msg_id
+  pulling: boolean;         // 防止并发 pull
+  seenMsgIds: Set<number>;  // msg_id 去重集合
+}
 
 /** 联系人 */
 export interface Contact {
@@ -185,4 +202,8 @@ export interface IdentityAcpState {
   reconnectAttempts: number;
   lastError: string | null;
   idleCheckInterval: ReturnType<typeof setInterval> | null;
+  groupClientReady: boolean;
+  groupSessionId: string | null;
+  groupTargetAid: string | null;
+  groupMessageBuffers: Map<string, GroupMessageBuffer>;
 }

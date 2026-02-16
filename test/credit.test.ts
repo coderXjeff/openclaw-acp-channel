@@ -5,7 +5,7 @@ import type { Contact } from "../src/types.js";
 function makeContact(overrides?: Partial<Contact>): Contact {
   const now = Date.now();
   return {
-    aid: "test.aid.pub",
+    aid: "test.agentcp.io",
     name: "test",
     groups: [],
     interactionCount: 0,

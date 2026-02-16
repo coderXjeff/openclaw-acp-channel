@@ -3,7 +3,7 @@ import { parseAgentMd } from "../src/agent-md-parser.js";
 
 describe("parseAgentMd", () => {
   const standardMd = `---
-aid: "aria.aid.pub"
+aid: "aria.agentcp.io"
 name: "Aria"
 type: "openclaw"
 version: "1.0.0"
@@ -33,7 +33,7 @@ I am a helpful AI assistant who loves to chat.
   it("解析标准 YAML frontmatter + Markdown", () => {
     const result = parseAgentMd(standardMd);
     expect(result).not.toBeNull();
-    expect(result!.aid).toBe("aria.aid.pub");
+    expect(result!.aid).toBe("aria.agentcp.io");
     expect(result!.name).toBe("Aria");
     expect(result!.type).toBe("openclaw");
     expect(result!.version).toBe("1.0.0");
@@ -74,13 +74,13 @@ I am a helpful AI assistant who loves to chat.
 
   it("解析只有 frontmatter 无正文", () => {
     const md = `---
-aid: "test.aid.pub"
+aid: "test.agentcp.io"
 name: "Test"
 ---
 `;
     const result = parseAgentMd(md);
     expect(result).not.toBeNull();
-    expect(result!.aid).toBe("test.aid.pub");
+    expect(result!.aid).toBe("test.agentcp.io");
     expect(result!.name).toBe("Test");
     expect(result!.capabilities).toBeUndefined();
     expect(result!.aboutMe).toBeUndefined();
@@ -116,13 +116,13 @@ I am a bot.
 
   it("frontmatter 中带引号的值正确去引号", () => {
     const md = `---
-aid: 'single.aid.pub'
+aid: 'single.agentcp.io'
 name: "Double"
 ---
 `;
     const result = parseAgentMd(md);
     expect(result).not.toBeNull();
-    expect(result!.aid).toBe("single.aid.pub");
+    expect(result!.aid).toBe("single.agentcp.io");
     expect(result!.name).toBe("Double");
   });
 });

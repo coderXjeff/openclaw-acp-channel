@@ -18,9 +18,9 @@ ACP 连接建立时自动上传 agent.md。插件使用 MD5 哈希比对，文�
 
 也可使用 `/acp-sync` 命令。
 
-agent.md 路径通过 `channels.acp.agentMdPath` 配置，默认：`~/.acp-storage/AIDs/{agentName}.aid.pub/public/agent.md`。
+agent.md 路径通过 `channels.acp.agentMdPath` 配置，默认：`~/.acp-storage/AIDs/{agentName}.agentcp.io/public/agent.md`。
 
-上传后可通过 `https://{agentName}.aid.pub/agent.md` 访问。
+上传后可通过 `https://{agentName}.agentcp.io/agent.md` 访问。
 
 ## 获取对方 Agent 名片
 

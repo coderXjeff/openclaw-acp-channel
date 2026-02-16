@@ -3,11 +3,21 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { getAgentMdFetcher } from "./agent-md-fetcher.js";
 import { getContactManager } from "./contacts.js";
 import { getCreditLevel } from "./credit.js";
+import { getRouter } from "./identity-router.js";
+
+function resolveIdentityIdByAid(selfAid?: string): string | undefined {
+  if (!selfAid) return undefined;
+  const router = getRouter();
+  if (!router) return undefined;
+  const state = router.getStateByAid(selfAid);
+  return state?.identityId;
+}
 
 // ===== 工具 1: acp_fetch_agent_md =====
 
 const FetchAgentMdParams = Type.Object({
-  aid: Type.String({ description: "The AID (Agent ID) to fetch agent.md for, e.g. 'alice.aid.pub'" }),
+  target_aid: Type.String({ description: "The AID (Agent ID) to fetch agent.md for, e.g. 'alice.agentcp.io'" }),
+  aid: Type.Optional(Type.String({ description: "Your AID (e.g. guard.agentcp.io). Pass your own AID from the session context." })),
   refresh: Type.Optional(Type.Boolean({ description: "Force refresh from remote, bypassing cache. Default: false" })),
 });
 
@@ -22,15 +32,15 @@ const fetchAgentMdTool: AgentTool<typeof FetchAgentMdParams, unknown> = {
     "Use this to learn about another agent before interacting with them.",
   parameters: FetchAgentMdParams,
   async execute(_toolCallId, params: FetchAgentMdInput): Promise<AgentToolResult<unknown>> {
-    const { aid, refresh } = params;
+    const { target_aid, refresh } = params;
     const fetcher = getAgentMdFetcher();
 
     try {
-      const result = refresh ? await fetcher.refresh(aid) : await fetcher.fetch(aid);
+      const result = refresh ? await fetcher.refresh(target_aid) : await fetcher.fetch(target_aid);
       if (!result) {
         return {
-          content: [{ type: "text", text: `No agent.md found for ${aid}` }],
-          details: { aid, found: false },
+          content: [{ type: "text", text: `No agent.md found for ${target_aid}` }],
+          details: { aid: target_aid, found: false },
         };
       }
       const summary = [
@@ -47,13 +57,13 @@ const fetchAgentMdTool: AgentTool<typeof FetchAgentMdParams, unknown> = {
         .join("\n");
       return {
         content: [{ type: "text", text: summary }],
-        details: { aid, found: true, parsed: result },
+        details: { aid: target_aid, found: true, parsed: result },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return {
-        content: [{ type: "text", text: `Error fetching agent.md for ${aid}: ${msg}` }],
-        details: { aid, error: msg },
+        content: [{ type: "text", text: `Error fetching agent.md for ${target_aid}: ${msg}` }],
+        details: { aid: target_aid, error: msg },
       };
     }
   },
@@ -72,6 +82,7 @@ const ManageContactsParams = Type.Object({
       "addToGroup, removeFromGroup, listGroups, setCreditScore, clearCreditOverride, getCreditInfo, " +
       "setSelfIntro (allows an external agent to set their own self-introduction only)",
   }),
+  self_aid: Type.Optional(Type.String({ description: "Your AID (e.g. guard.agentcp.io). Pass your own AID from the session context." })),
   aid: Type.Optional(Type.String({ description: "Agent ID (required for most actions except list/listGroups)" })),
   name: Type.Optional(Type.String({ description: "Contact display name (for add/update)" })),
   emoji: Type.Optional(Type.String({ description: "Contact emoji (for add/update)" })),
@@ -98,7 +109,8 @@ const manageContactsTool: AgentTool<typeof ManageContactsParams, unknown> = {
     "Use this to view and manage the agent's contact list and trust relationships.",
   parameters: ManageContactsParams,
   async execute(_toolCallId, params: ManageContactsInput): Promise<AgentToolResult<unknown>> {
-    const contacts = getContactManager();
+    const identityId = resolveIdentityIdByAid(params.self_aid);
+    const contacts = getContactManager(identityId);
     const { action, aid } = params;
 
     try {

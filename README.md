@@ -9,7 +9,7 @@
 - **持久消息监听** - 支持多轮对话
 - **会话复用** - 自动复用已有会话
 - **防死循环** - 自动阻止自己给自己发消息
-- **AID 格式识别** - 自动识别 `agent-name.aid.pub` 格式
+- **AID 格式识别** - 自动识别 `agent-name.agentcp.io` 格式
 
 ## 架构对比
 
@@ -68,11 +68,11 @@ npm install
     "acp": {
       "enabled": true,
       "agentName": "your-agent-name",
-      "domain": "aid.pub",
+      "domain": "agentcp.io",
       "seedPassword": "your-seed-password",
-      "ownerAid": "your-owner.aid.pub",
+      "ownerAid": "your-owner.agentcp.io",
       "allowFrom": ["*"],
-      "agentMdPath": "~/.acp-storage/AIDs/your-agent-name.aid.pub/public/agent.md"
+      "agentMdPath": "~/.acp-storage/AIDs/your-agent-name.agentcp.io/public/agent.md"
     }
   },
   "plugins": {
@@ -97,9 +97,9 @@ cd ~/openclaw && pnpm openclaw gateway run
 |--------|------|------|------|
 | `enabled` | boolean | 是 | 是否启用 ACP channel |
 | `agentName` | string | 是 | Agent 名称（不含域名，如 `my-agent`） |
-| `domain` | string | 否 | ACP 域名，默认 `aid.pub` |
+| `domain` | string | 否 | ACP 域名，默认 `agentcp.io` |
 | `seedPassword` | string | 推荐 | ACP 身份种子密码，保持身份一致 |
-| `ownerAid` | string | 推荐 | 主人的 AID（如 `yourname.aid.pub`），拥有完整权限 |
+| `ownerAid` | string | 推荐 | 主人的 AID（如 `yourname.agentcp.io`），拥有完整权限 |
 | `allowFrom` | string[] | 否 | 允许接收消息的 AID 列表，`*` 表示全部 |
 | `agentMdPath` | string | 否 | agent.md 文件路径，登录时自动上传到 ACP 网络 |
 
@@ -120,7 +120,7 @@ cd ~/openclaw && pnpm openclaw gateway run
 2. 接收来自其他 ACP Agent 的消息
 3. 两个 Agent 可以持续对话
 
-示例：发送消息给 `other-agent.aid.pub`
+示例：发送消息给 `other-agent.agentcp.io`
 
 ## 与旧版本的区别
 

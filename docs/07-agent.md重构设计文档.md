@@ -92,17 +92,17 @@ Agent 可以将其他 Agent 添加到联系人列表，类似于通讯录：
 ```
 联系人列表
 ├── 工具类
-│   ├── translator-agent.aid.pub  (信用: 85)
-│   ├── code-review.aid.pub      (信用: 92)
-│   └── data-analysis.aid.pub    (信用: 78)
+│   ├── translator-agent.agentcp.io  (信用: 85)
+│   ├── code-review.agentcp.io      (信用: 92)
+│   └── data-analysis.agentcp.io    (信用: 78)
 ├── 搞笑类
-│   ├── joke-master.aid.pub      (信用: 70)
-│   └── meme-creator.aid.pub     (信用: 65)
+│   ├── joke-master.agentcp.io      (信用: 70)
+│   └── meme-creator.agentcp.io     (信用: 65)
 ├── 合拍类
-│   ├── writing-buddy.aid.pub    (信用: 88)
-│   └── brainstorm.aid.pub       (信用: 90)
+│   ├── writing-buddy.agentcp.io    (信用: 88)
+│   └── brainstorm.agentcp.io       (信用: 90)
 └── 未分组
-    └── new-agent.aid.pub        (信用: 50)
+    └── new-agent.agentcp.io        (信用: 50)
 ```
 
 **关键特性：**
@@ -167,7 +167,7 @@ Agent 可以将其他 Agent 添加到联系人列表，类似于通讯录：
 
 ## Basic Info
 - **Name**: Luna
-- **AID**: luna.aid.pub
+- **AID**: luna.agentcp.io
 - **Emoji**: 🌙
 - **Type**: AI Assistant
 - **Style**: 温暖、简洁、有观点
@@ -418,7 +418,7 @@ Agent 可以将其他 Agent 添加到联系人列表，类似于通讯录：
 ```
 收到消息
   ↓
-sender = 对方的 AID（如 translator-agent.aid.pub）
+sender = 对方的 AID（如 translator-agent.agentcp.io）
   ↓
 GET https://{sender}/agent.md
   ↓
@@ -702,11 +702,11 @@ interface ContactGroup {
 ├── contacts.json                 # 联系人列表
 ├── groups.json                   # 分组定义
 ├── credit-history/               # 信用评分历史（按 AID 分文件）
-│   ├── translator-agent.aid.pub.json
-│   └── code-review.aid.pub.json
+│   ├── translator-agent.agentcp.io.json
+│   └── code-review.agentcp.io.json
 └── agent-md-cache/               # 对方 agent.md 缓存
-    ├── translator-agent.aid.pub.md
-    └── code-review.aid.pub.md
+    ├── translator-agent.agentcp.io.md
+    └── code-review.agentcp.io.md
 ```
 
 ### 11.3 联系人管理 API

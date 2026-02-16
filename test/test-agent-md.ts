@@ -6,7 +6,7 @@ import { parseIdentity, sanitizeUserMd, buildAgentMd, computeSourcesHash } from 
 import { loadAgentMdSources } from "../src/agent-md-sources.js";
 
 const WORKSPACE = "/home/ykj/.openclaw/workspace";
-const AID = "aria.aid.pub";
+const AID = "aria.agentcp.io";
 
 console.log("=== 1. loadAgentMdSources ===");
 const sources = loadAgentMdSources(WORKSPACE);

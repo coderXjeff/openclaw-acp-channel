@@ -6,7 +6,10 @@ import type {
 } from "./plugin-types.js";
 import type { ResolvedAcpAccount } from "./types.js";
 import { getConnectionSnapshot, isMonitorRunning } from "./monitor.js";
-import { AgentManager } from "acp-ts";
+import { AgentCP } from "acp-ts/dist/agentcp.js";
+import * as path from "path";
+
+const ACP_STORAGE_DIR = path.join(process.env.HOME || "~", ".acp-storage");
 
 // 探测结果类型
 export interface AcpProbeResult {
@@ -31,8 +34,7 @@ export const acpStatusAdapter: ChannelStatusAdapter<ResolvedAcpAccount, AcpProbe
     }
 
     try {
-      const manager = AgentManager.getInstance();
-      const acp = manager.initACP(account.domain, account.seedPassword || "");
+      const acp = new AgentCP(account.domain, account.seedPassword || "", ACP_STORAGE_DIR);
 
       // 尝试加载 AID
       let loadedAid = await acp.loadAid(aid);

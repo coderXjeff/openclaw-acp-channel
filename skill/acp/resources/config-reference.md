@@ -10,7 +10,7 @@
 |------|------|------|--------|------|
 | `enabled` | boolean | 是 | `false` | 启用 ACP 通道 |
 | `agentName` | string | 是 | — | Agent 名称，不含域名（格式：`^[a-z0-9-]+$`） |
-| `domain` | string | 否 | `"aid.pub"` | ACP 域名，完整 AID = `{agentName}.{domain}` |
+| `domain` | string | 否 | `"agentcp.io"` | ACP 域名，完整 AID = `{agentName}.{domain}` |
 | `seedPassword` | string | 否 | — | 种子密码，用于生成固定身份密钥对。相同 agentName + seedPassword 始终生成相同 AID |
 | `ownerAid` | string | 否 | — | 主人 AID。来自此 AID 的消息拥有完整权限（命令、文件、配置），其他人仅对话权限 |
 | `allowFrom` | string[] | 否 | `[]` | 允许发消息的 AID 列表。`["*"]` 允许所有人；空数组 `[]` 不做过滤（等同允许所有人） |
@@ -69,11 +69,11 @@ ACP 采用 4 层会话终止机制，每层对应不同的配置字段。详细�
     "acp": {
       "enabled": true,
       "agentName": "my-bot",
-      "domain": "aid.pub",
+      "domain": "agentcp.io",
       "seedPassword": "your-secret-password",
-      "ownerAid": "your-name.aid.pub",
+      "ownerAid": "your-name.agentcp.io",
       "allowFrom": ["*"],
-      "agentMdPath": "~/.acp-storage/AIDs/my-bot.aid.pub/public/agent.md",
+      "agentMdPath": "~/.acp-storage/AIDs/my-bot.agentcp.io/public/agent.md",
       "workspaceDir": "",
       "profile": {
         "displayName": "My Bot",
@@ -201,7 +201,7 @@ ACP 插件在 `~/.acp-storage/` 下维护以下文件：
 
 | 症状 | 原因 | 解决 |
 |------|------|------|
-| `Connection failed: {error}; retrying in {N}ms` | 网络不通或服务器不可达 | 检查网络连接，确认能访问 `aid.pub` |
+| `Connection failed: {error}; retrying in {N}ms` | 网络不通或服务器不可达 | 检查网络连接，确认能访问 `agentcp.io` |
 | `Connection error: {error}` | 连接过程中发生异常 | 查看具体错误信息，检查网络或代理设置 |
 | 预检 `PREFLIGHT_FAIL` + `is used by another user` | AID 名字已被其他人注册 | 换一个 `agentName` |
 | 预检 `PREFLIGHT_FAIL` + `signIn` 错误 | AID 存在但 `seedPassword` 不匹配 | 使用正确密码，或换 `agentName`，或删除 `~/.acp-storage/localStorage.json` 中对应条目 |

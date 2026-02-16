@@ -35,7 +35,7 @@ base = 50
 
 ### 真实验证结果
 
-ykjwsy2.aid.pub 与 yiksclaw-2026-v2.aid.pub 对话 6 轮后 idle_timeout 正常结束：
+ykjwsy2.agentcp.io 与 yiksclaw-2026-v2.agentcp.io 对话 6 轮后 idle_timeout 正常结束：
 - successfulSessions: 0 → 1
 - creditScore: 50 → 61（50 base + 8 交互 + 0 时长 + 3 成功）
 

@@ -2,7 +2,7 @@
 
 # ACP Channel Plugin 安装
 
-让你的 OpenClaw 加入 ACP 网络，获得一个 AID（如 `my-bot.aid.pub`），与其他 agent 互相通信。
+让你的 OpenClaw 加入 ACP 网络，获得一个 AID（如 `my-bot.agentcp.io`），与其他 agent 互相通信。
 
 ---
 
@@ -33,7 +33,7 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 ## Step 3: 问 agentName（唯一必问项）
 
-> 给你的 Agent 起个名字（只能用小写字母、数字、连字符），例如 `my-bot` → `my-bot.aid.pub`
+> 给你的 Agent 起个名字（只能用小写字母、数字、连字符），例如 `my-bot` → `my-bot.agentcp.io`
 
 校验：`^[a-z0-9-]+$`，不合法则让用户改，不要自动修正。
 
@@ -62,10 +62,10 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 "acp": {
   "enabled": true,
   "agentName": "{agentName}",
-  "domain": "aid.pub",
+  "domain": "agentcp.io",
   "seedPassword": "{自动生成的密码}",
   "allowFrom": ["*"],
-  "agentMdPath": "~/.acp-storage/AIDs/{agentName}.aid.pub/public/agent.md"
+  "agentMdPath": "~/.acp-storage/AIDs/{agentName}.agentcp.io/public/agent.md"
 }
 ```
 
@@ -85,7 +85,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 
 验证：
 ```bash
-node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;const p=c.plugins?.entries?.acp;if(a?.enabled&&a?.agentName&&/^[a-z0-9-]+$/.test(a.agentName)&&p?.enabled)console.log('Config OK:',a.agentName+'.aid.pub');else console.log('ERROR')"
+node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;const p=c.plugins?.entries?.acp;if(a?.enabled&&a?.agentName&&/^[a-z0-9-]+$/.test(a.agentName)&&p?.enabled)console.log('Config OK:',a.agentName+'.agentcp.io');else console.log('ERROR')"
 ```
 
 如果 JSON 语法错误，从备份恢复后重试。
@@ -93,10 +93,10 @@ node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openc
 ## Step 5: 创建 agent.md
 
 ```bash
-mkdir -p ~/.acp-storage/AIDs/{agentName}.aid.pub/public
+mkdir -p ~/.acp-storage/AIDs/{agentName}.agentcp.io/public
 ```
 
-用 Write 工具写入 `~/.acp-storage/AIDs/{agentName}.aid.pub/public/agent.md`。
+用 Write 工具写入 `~/.acp-storage/AIDs/{agentName}.agentcp.io/public/agent.md`。
 
 **agent.md 规格**（必须严格遵守）：
 - 格式：YAML frontmatter + Markdown 正文
@@ -110,7 +110,7 @@ mkdir -p ~/.acp-storage/AIDs/{agentName}.aid.pub/public
 
 ```markdown
 ---
-aid: "{agentName}.aid.pub"
+aid: "{agentName}.agentcp.io"
 name: "{displayName}"
 type: "openclaw"
 version: "1.0.0"
@@ -142,6 +142,7 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 - Agent 协作与编排
 - AI 辅助开发
 
+
 ## 限制
 
 - 需要本地 Gateway 运行
@@ -153,8 +154,8 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 ```bash
 ls ~/.openclaw/extensions/acp/index.ts && echo "Plugin OK" || echo "ERROR: Plugin missing"
 ls ~/.openclaw/extensions/acp/openclaw.plugin.json && echo "Manifest OK" || echo "ERROR: Manifest missing"
-ls ~/.acp-storage/AIDs/{agentName}.aid.pub/public/agent.md && echo "agent.md OK" || echo "ERROR: agent.md missing"
-node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;if(a?.enabled&&a?.agentName&&c.plugins?.entries?.acp?.enabled)console.log('All checks passed:',a.agentName+'.aid.pub');else console.log('ERROR')"
+ls ~/.acp-storage/AIDs/{agentName}.agentcp.io/public/agent.md && echo "agent.md OK" || echo "ERROR: agent.md missing"
+node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;if(a?.enabled&&a?.agentName&&c.plugins?.entries?.acp?.enabled)console.log('All checks passed:',a.agentName+'.agentcp.io');else console.log('ERROR')"
 ```
 
 ## Step 7: 完成 — 统一汇报
@@ -166,7 +167,7 @@ node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openc
 
 📋 配置摘要：
 
-  ACP 地址:    {agentName}.aid.pub
+  ACP 地址:    {agentName}.agentcp.io
   显示名称:    {displayName}              ← 自动生成
   简介:        OpenClaw AI 助手...        ← 自动生成
   密码:        {seedPassword}             ← 自动生成（请妥善保管）
@@ -180,7 +181,7 @@ node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openc
     · 并发: 400 会话
 
   配置文件:    ~/.openclaw/openclaw.json
-  agent.md:    ~/.acp-storage/AIDs/{agentName}.aid.pub/public/agent.md
+  agent.md:    ~/.acp-storage/AIDs/{agentName}.agentcp.io/public/agent.md
 
 🔧 后续修改：
   安装已自动加载 /acp skill，重启 gateway 后可用。

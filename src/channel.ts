@@ -20,7 +20,7 @@ const acpMeta = {
 
 // Channel 能力声明
 const acpCapabilities = {
-  chatTypes: ["direct" as const],
+  chatTypes: ["direct" as const, "group" as const],
   media: false,
   threads: false,
   blockStreaming: true,
@@ -55,7 +55,7 @@ const acpConfigAdapter = {
     // 多身份模式：从 identities[accountId] 解析
     if (acpConfig?.identities && id !== "default" && acpConfig.identities[id]) {
       const entry: AcpIdentityEntry = acpConfig.identities[id];
-      const domain = entry.domain ?? acpConfig.domain ?? "aid.pub";
+      const domain = entry.domain ?? acpConfig.domain ?? "agentcp.io";
       return {
         accountId: id,
         identityId: id,
@@ -72,7 +72,7 @@ const acpConfigAdapter = {
     }
 
     // 单 AID 模式：从顶层字段解析
-    const domain = acpConfig?.domain ?? "aid.pub";
+    const domain = acpConfig?.domain ?? "agentcp.io";
     const agentName = acpConfig?.agentName ?? "";
     return {
       accountId: id,
@@ -124,8 +124,8 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
     },
     domain: {
       label: "Domain",
-      help: "ACP domain (default: aid.pub)",
-      placeholder: "aid.pub",
+      help: "ACP domain (default: agentcp.io)",
+      placeholder: "agentcp.io",
     },
     seedPassword: {
       label: "Seed Password",
@@ -134,8 +134,8 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
     },
     ownerAid: {
       label: "Owner AID",
-      help: "Owner's AID for privileged access (e.g., 'owner-name.aid.pub')",
-      placeholder: "owner-name.aid.pub",
+      help: "Owner's AID for privileged access (e.g., 'owner-name.agentcp.io')",
+      placeholder: "owner-name.agentcp.io",
     },
     allowFrom: {
       label: "Allow From",
@@ -143,7 +143,7 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
     },
     agentMdPath: {
       label: "Agent.md Path",
-      help: "Path to agent.md file (auto-upload on login, e.g., ~/.acp-storage/AIDs/my-agent.aid.pub/public/agent.md)",
+      help: "Path to agent.md file (auto-upload on login, e.g., ~/.acp-storage/AIDs/my-agent.agentcp.io/public/agent.md)",
       placeholder: "~/.acp-storage/AIDs/{aid}/public/agent.md",
     },
     identities: {
@@ -222,7 +222,7 @@ const acpMessagingAdapter = {
     // 识别 AID 格式: name.domain 或 acp:name.domain:session
     looksLikeId: (raw: string, _normalized: string): boolean => {
       const trimmed = raw.trim();
-      // 匹配 AID 格式: xxx.aid.pub 或 xxx.其他域名
+      // 匹配 AID 格式: xxx.agentcp.io 或 xxx.其他域名
       if (/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_.-]+$/.test(trimmed)) {
         return true;
       }
@@ -232,7 +232,7 @@ const acpMessagingAdapter = {
       }
       return false;
     },
-    hint: "Use AID format: agent-name.aid.pub",
+    hint: "Use AID format: agent-name.agentcp.io",
   },
 };
 

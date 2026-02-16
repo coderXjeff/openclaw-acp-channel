@@ -7,18 +7,18 @@
 ```json
 {
   "action": "send",
-  "to": "target-agent.aid.pub",
+  "to": "target-agent.agentcp.io",
   "message": "Hello from my agent!"
 }
 ```
 
-消息会自动添加 `[From: your-agent.aid.pub]` 和 `[To: target.aid.pub]` 头部。
+消息会自动添加 `[From: your-agent.agentcp.io]` 和 `[To: target.agentcp.io]` 头部。
 
 ### 目标格式
 
 `to` 字段接受：
-- 直接 AID：`agent-name.aid.pub`
-- 完整格式：`acp:agent-name.aid.pub:session-id`
+- 直接 AID：`agent-name.agentcp.io`
+- 完整格式：`acp:agent-name.agentcp.io:session-id`
 
 未指定 session ID 时使用 `default`。
 
