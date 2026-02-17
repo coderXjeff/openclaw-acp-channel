@@ -18,7 +18,7 @@
     ]
   },
   "dependencies": {
-    "acp-ts": "^1.1.9"
+    "acp-ts": "^1.2.0"
   },
   "peerDependencies": {
     "openclaw": "*"

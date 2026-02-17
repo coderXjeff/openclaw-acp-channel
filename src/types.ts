@@ -62,6 +62,8 @@ export interface AcpSessionConfig {
 
   // 群组消息
   groupMessageIntervalMs?: number;    // 群消息批量发送给 agent 的间隔(ms)，默认 60000
+  groupDispatchCooldownMs?: number;   // Dispatch Gate 冷却间隔(ms)，默认 30000
+  groupBufferGateMs?: number;         // Buffer Gate 聚合窗口(ms)，默认 3000
 }
 
 // 解析后的账户信息
@@ -135,15 +137,27 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   maxSessionsPerTarget: 10,         // 同一 targetAid 最大 10 个并发会话
   // 群组消息
   groupMessageIntervalMs: 60000,    // 群消息批量发送间隔，默认 60 秒
+  groupDispatchCooldownMs: 30000,   // Dispatch Gate 冷却间隔，默认 30 秒
+  groupBufferGateMs: 3000,          // Buffer Gate 聚合窗口，默认 3 秒
 };
+
+/** 群组消息项（解耦 SDK 类型） */
+export interface GroupMessageItem {
+  msg_id: number;
+  sender: string;
+  content: string;
+  timestamp: number;
+}
 
 /** 群组消息缓冲区 */
 export interface GroupMessageBuffer {
   groupId: string;
-  messages: { sender: string; content: string; timestamp: number; msg_id?: number }[];
-  lastDispatchAt: number;
-  flushTimer: ReturnType<typeof setTimeout> | null;
+  incomingMessages: GroupMessageItem[];                    // Buffer Gate 聚合中的消息
+  bufferGateTimer: ReturnType<typeof setTimeout> | null;   // Buffer Gate 聚合定时器
+  pendingQueue: GroupMessageItem[];                        // Dispatch Gate 待处理队列
+  cooldownTimer: ReturnType<typeof setTimeout> | null;     // Dispatch Gate 冷却定时器
   dispatching: boolean;
+  lastDispatchAt: number;
   lastPulledMsgId: number;  // 上次 pullMessages 拉到的最大 msg_id
   pulling: boolean;         // 防止并发 pull
   seenMsgIds: Set<number>;  // msg_id 去重集合

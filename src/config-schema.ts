@@ -121,6 +121,18 @@ export const acpConfigSchema: JSONSchema = {
           minimum: 5000,
           description: "Interval (ms) for batching group messages before dispatching to agent",
         },
+        groupDispatchCooldownMs: {
+          type: "number",
+          default: DEFAULT_SESSION_CONFIG.groupDispatchCooldownMs,
+          minimum: 1000,
+          description: "Dispatch Gate cooldown interval (ms) between consecutive agent dispatches for group messages",
+        },
+        groupBufferGateMs: {
+          type: "number",
+          default: DEFAULT_SESSION_CONFIG.groupBufferGateMs,
+          minimum: 500,
+          description: "Buffer Gate aggregation window (ms) for collecting incoming group messages before queuing",
+        },
       },
     },
     identities: {

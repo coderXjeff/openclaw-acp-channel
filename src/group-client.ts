@@ -8,7 +8,8 @@
  */
 import { LocalCursorStore } from "acp-ts";
 import type { ACPGroupEventHandler } from "acp-ts";
-import type { IdentityAcpState, GroupMessageBuffer } from "./types.js";
+import type { IdentityAcpState, GroupMessageBuffer, GroupMessageItem } from "./types.js";
+import { DEFAULT_SESSION_CONFIG } from "./types.js";
 import type { AcpIdentityRouter } from "./identity-router.js";
 import * as path from "path";
 import * as fs from "fs";
@@ -21,6 +22,197 @@ const MAX_PULL_PAGES = 100;
 function debugLog(msg: string): void {
   const line = `[${new Date().toISOString()}] [group-client] ${msg}\n`;
   try { fs.appendFileSync(DEBUG_LOG, line); } catch {}
+}
+
+// ===== Helper functions =====
+
+function getOrCreateBuffer(state: IdentityAcpState, groupId: string): GroupMessageBuffer {
+  let buffer = state.groupMessageBuffers.get(groupId);
+  if (!buffer) {
+    buffer = {
+      groupId,
+      incomingMessages: [],
+      bufferGateTimer: null,
+      pendingQueue: [],
+      cooldownTimer: null,
+      dispatching: false,
+      lastDispatchAt: 0,
+      lastPulledMsgId: 0,
+      pulling: false,
+      seenMsgIds: new Set(),
+    };
+    state.groupMessageBuffers.set(groupId, buffer);
+  }
+  return buffer;
+}
+
+/** Returns true if the message is new (not a duplicate) */
+function deduplicateMessage(buffer: GroupMessageBuffer, msgId: number): boolean {
+  if (msgId <= 0) return true; // no valid msg_id, can't dedup
+  if (buffer.seenMsgIds.has(msgId)) return false;
+  buffer.seenMsgIds.add(msgId);
+  // 防止无限增长：超过 500 则裁剪到 300
+  if (buffer.seenMsgIds.size > 500) {
+    const sorted = Array.from(buffer.seenMsgIds).sort((a, b) => a - b);
+    for (const id of sorted.slice(0, sorted.length - 300)) {
+      buffer.seenMsgIds.delete(id);
+    }
+  }
+  return true;
+}
+
+function getDispatchCooldownMs(router: AcpIdentityRouter): number {
+  const acpConfig = router.getAcpConfig();
+  const val = acpConfig?.session?.groupDispatchCooldownMs;
+  return (typeof val === "number" && val >= 1000) ? val : DEFAULT_SESSION_CONFIG.groupDispatchCooldownMs;
+}
+
+function getBufferGateMs(router: AcpIdentityRouter): number {
+  const acpConfig = router.getAcpConfig();
+  const val = acpConfig?.session?.groupBufferGateMs;
+  return (typeof val === "number" && val >= 500) ? val : DEFAULT_SESSION_CONFIG.groupBufferGateMs;
+}
+
+// ===== Buffer Gate =====
+
+function feedBufferGate(
+  state: IdentityAcpState,
+  router: AcpIdentityRouter,
+  groupId: string,
+  messages: GroupMessageItem[]
+): void {
+  const identityId = state.identityId;
+  const buffer = getOrCreateBuffer(state, groupId);
+
+  let added = 0;
+  for (const msg of messages) {
+    if (!deduplicateMessage(buffer, msg.msg_id)) {
+      debugLog(`[${identityId}] feedBufferGate DEDUP: skipping msg_id=${msg.msg_id} for group=${groupId}`);
+      continue;
+    }
+    buffer.incomingMessages.push(msg);
+    added++;
+  }
+
+  debugLog(`[${identityId}] feedBufferGate: group=${groupId}, received=${messages.length}, added=${added}, incomingSize=${buffer.incomingMessages.length}`);
+
+  if (added === 0) return;
+
+  // 重置 bufferGateTimer
+  if (buffer.bufferGateTimer) {
+    clearTimeout(buffer.bufferGateTimer);
+  }
+  const gateMs = getBufferGateMs(router);
+  buffer.bufferGateTimer = setTimeout(() => {
+    buffer.bufferGateTimer = null;
+    flushBufferGateToQueue(state, router, groupId);
+  }, gateMs);
+  debugLog(`[${identityId}] feedBufferGate: bufferGateTimer reset to ${gateMs}ms for group=${groupId}`);
+}
+
+function flushBufferGateToQueue(
+  state: IdentityAcpState,
+  router: AcpIdentityRouter,
+  groupId: string
+): void {
+  const identityId = state.identityId;
+  const buffer = state.groupMessageBuffers.get(groupId);
+  if (!buffer || buffer.incomingMessages.length === 0) {
+    debugLog(`[${identityId}] flushBufferGateToQueue SKIP: group=${groupId}, empty`);
+    return;
+  }
+
+  const flushed = buffer.incomingMessages.splice(0);
+  buffer.pendingQueue.push(...flushed);
+  debugLog(`[${identityId}] flushBufferGateToQueue: group=${groupId}, flushed=${flushed.length} to pendingQueue, queueSize=${buffer.pendingQueue.length}`);
+
+  tryDispatch(state, router, groupId);
+}
+
+// ===== Dispatch Gate =====
+
+function tryDispatch(
+  state: IdentityAcpState,
+  router: AcpIdentityRouter,
+  groupId: string
+): void {
+  const identityId = state.identityId;
+  const buffer = state.groupMessageBuffers.get(groupId);
+  if (!buffer || buffer.pendingQueue.length === 0) {
+    debugLog(`[${identityId}] tryDispatch SKIP: group=${groupId}, no pending messages`);
+    return;
+  }
+
+  if (buffer.dispatching) {
+    debugLog(`[${identityId}] tryDispatch SKIP: group=${groupId}, already dispatching (messages stay in pendingQueue)`);
+    return;
+  }
+
+  const cooldownMs = getDispatchCooldownMs(router);
+  const elapsed = Date.now() - buffer.lastDispatchAt;
+  if (buffer.lastDispatchAt > 0 && elapsed < cooldownMs) {
+    // 冷却未过，启动 cooldownTimer（如果尚未启动）
+    if (!buffer.cooldownTimer) {
+      const remaining = cooldownMs - elapsed;
+      debugLog(`[${identityId}] tryDispatch COOLDOWN: group=${groupId}, remaining=${remaining}ms`);
+      buffer.cooldownTimer = setTimeout(() => {
+        buffer.cooldownTimer = null;
+        tryDispatch(state, router, groupId);
+      }, remaining);
+    }
+    return;
+  }
+
+  // 取出 pendingQueue 全部消息
+  const messages = buffer.pendingQueue.splice(0);
+  debugLog(`[${identityId}] tryDispatch GO: group=${groupId}, dispatching ${messages.length} messages`);
+  void dispatchToAgent(state, router, groupId, messages, buffer);
+}
+
+async function dispatchToAgent(
+  state: IdentityAcpState,
+  router: AcpIdentityRouter,
+  groupId: string,
+  messages: GroupMessageItem[],
+  buffer: GroupMessageBuffer
+): Promise<void> {
+  const identityId = state.identityId;
+  buffer.dispatching = true;
+
+  debugLog(`[${identityId}] dispatchToAgent START: group=${groupId}, messageCount=${messages.length}`);
+  console.log(`[ACP-Group] [${identityId}] Dispatching ${messages.length} group messages for group=${groupId}`);
+
+  try {
+    const { handleGroupMessagesForIdentity } = await import("./monitor.js");
+    // 转换为 handleGroupMessagesForIdentity 期望的格式
+    const formatted = messages.map(m => ({
+      sender: m.sender,
+      content: m.content,
+      timestamp: m.timestamp,
+      msg_id: m.msg_id > 0 ? m.msg_id : undefined,
+    }));
+    await handleGroupMessagesForIdentity(state, groupId, formatted);
+    debugLog(`[${identityId}] dispatchToAgent DONE: group=${groupId}`);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const errStack = err instanceof Error ? err.stack : undefined;
+    debugLog(`[${identityId}] dispatchToAgent ERROR: group=${groupId}, error=${errMsg}\n${errStack ?? ''}`);
+    console.error(`[ACP-Group] [${identityId}] Error dispatching group messages:`, err);
+  } finally {
+    buffer.dispatching = false;
+    buffer.lastDispatchAt = Date.now();
+    debugLog(`[${identityId}] dispatchToAgent FINALLY: group=${groupId}, dispatching=false, lastDispatchAt=${buffer.lastDispatchAt}`);
+
+    // 如果 pendingQueue 中又积累了新消息，启动冷却定时器
+    if (buffer.pendingQueue.length > 0 && !buffer.cooldownTimer) {
+      const cooldownMs = getDispatchCooldownMs(router);
+      debugLog(`[${identityId}] dispatchToAgent: pendingQueue has ${buffer.pendingQueue.length} msgs, starting cooldown ${cooldownMs}ms`);
+      buffer.cooldownTimer = setTimeout(() => {
+        buffer.cooldownTimer = null;
+        tryDispatch(state, router, groupId);
+      }, cooldownMs);
+    }
+  }
 }
 
 /**
@@ -128,7 +320,7 @@ export async function initGroupClientForIdentity(
   const eventHandler: ACPGroupEventHandler = {
     onNewMessage(groupId, latestMsgId, sender, preview) {
       debugLog(`[${identityId}] EVENT onNewMessage: group=${groupId}, msgId=${latestMsgId}, sender=${sender}, preview=${preview.substring(0, 80)}`);
-      // new_message 只是通知，需要主动 pullMessages 拉取完整消息内容
+      // new_message 只是通知，需要主动 pullMessages 拉取完整消息内容（fallback 路径）
       void pullAndBufferGroupMessages(state, router, groupId);
     },
     onNewEvent(groupId, _latestEventId, eventType, summary) {
@@ -151,19 +343,34 @@ export async function initGroupClientForIdentity(
       debugLog(`[${identityId}] EVENT onJoinRequestReceived: group=${groupId}, agent=${agentId}, msg=${message}`);
       console.log(`[ACP-Group] [${identityId}] Join request for ${groupId} from ${agentId}: ${message}`);
     },
-    onGroupMessage(groupId, msg) {
-      debugLog(`[${identityId}] onGroupMessage: group=${groupId}, msg_id=${msg.msg_id}, sender=${msg.sender}, content=${String(msg.content).substring(0, 50)}`);
+    onGroupMessageBatch(groupId, batch) {
+      debugLog(`[${identityId}] onGroupMessageBatch: group=${groupId}, count=${batch.count}, msgRange=${batch.start_msg_id}-${batch.latest_msg_id}`);
 
-      const sender = msg.sender ?? "";
-      const content = String(msg.content ?? "");
-      const timestamp = msg.timestamp ?? Date.now();
-      const msgId = msg.msg_id ?? 0;
+      // 排序/存储/ACK（SDK 要求调用方处理）
+      try {
+        acp.processAndAckBatch(groupId, batch);
+        debugLog(`[${identityId}] processAndAckBatch OK: group=${groupId}`);
+      } catch (err) {
+        debugLog(`[${identityId}] processAndAckBatch ERROR: ${err instanceof Error ? err.message : String(err)}`);
+      }
 
-      // 跳过自己发的
-      if (sender === aid) return;
+      // 过滤自己发的消息
+      const items: GroupMessageItem[] = [];
+      for (const msg of batch.messages) {
+        const sender = msg.sender ?? "";
+        if (sender === aid) continue;
+        items.push({
+          msg_id: msg.msg_id ?? 0,
+          sender,
+          content: String(msg.content ?? ""),
+          timestamp: msg.timestamp ?? Date.now(),
+        });
+      }
 
-      // 直接缓冲（去重由 bufferGroupMessage 内部处理）
-      bufferGroupMessage(state, groupId, { sender, content, timestamp, msg_id: msgId });
+      debugLog(`[${identityId}] onGroupMessageBatch: group=${groupId}, after self-filter=${items.length}/${batch.messages.length}`);
+      if (items.length > 0) {
+        feedBufferGate(state, router, groupId, items);
+      }
     },
     onGroupEvent(_groupId, _evt) {},
   };
@@ -300,9 +507,13 @@ export async function closeGroupClientForIdentity(
 
   // 清理群消息缓冲区和定时器
   for (const [, buffer] of state.groupMessageBuffers) {
-    if (buffer.flushTimer) {
-      clearTimeout(buffer.flushTimer);
-      buffer.flushTimer = null;
+    if (buffer.bufferGateTimer) {
+      clearTimeout(buffer.bufferGateTimer);
+      buffer.bufferGateTimer = null;
+    }
+    if (buffer.cooldownTimer) {
+      clearTimeout(buffer.cooldownTimer);
+      buffer.cooldownTimer = null;
     }
   }
   state.groupMessageBuffers.clear();
@@ -330,20 +541,7 @@ export async function pullAndBufferGroupMessages(
   }
 
   // 获取或创建 buffer（用于跟踪 lastPulledMsgId 和 pulling 状态）
-  let buffer = state.groupMessageBuffers.get(groupId);
-  if (!buffer) {
-    buffer = {
-      groupId,
-      messages: [],
-      lastDispatchAt: 0,
-      flushTimer: null,
-      dispatching: false,
-      lastPulledMsgId: 0,
-      pulling: false,
-      seenMsgIds: new Set(),
-    };
-    state.groupMessageBuffers.set(groupId, buffer);
-  }
+  const buffer = getOrCreateBuffer(state, groupId);
 
   if (buffer.pulling) {
     debugLog(`[${identityId}] pullAndBuffer SKIP: already pulling for group=${groupId}`);
@@ -363,6 +561,7 @@ export async function pullAndBufferGroupMessages(
     let page = 0;
     let totalPulled = 0;
     let hasMore = false;
+    const collectedMessages: GroupMessageItem[] = [];
 
     do {
       page++;
@@ -397,20 +596,25 @@ export async function pullAndBufferGroupMessages(
 
         debugLog(`[${identityId}] pullAndBuffer: msg_id=${msgId}, sender=${sender}, content="${String(content).substring(0, 80)}", ts=${timestamp}`);
 
-        // 跳过自己发的消息（避免回声，这里先过滤一次，handleGroupMessagesForIdentity 里还会再过滤）
+        // 跳过自己发的消息（避免回声）
         if (sender === aid) {
           debugLog(`[${identityId}] pullAndBuffer: skipping self-sent message msg_id=${msgId}`);
           continue;
         }
 
-        bufferGroupMessage(state, groupId, { sender, content: String(content), timestamp, msg_id: msgId });
+        collectedMessages.push({ msg_id: msgId, sender, content: String(content), timestamp });
       }
 
       afterMsgId = maxMsgId;
     } while (hasMore);
 
     buffer.lastPulledMsgId = maxMsgId;
-    debugLog(`[${identityId}] pullAndBuffer DONE: group=${groupId}, totalPulled=${totalPulled}, pages=${page}, lastPulledMsgId=${maxMsgId}`);
+    debugLog(`[${identityId}] pullAndBuffer DONE: group=${groupId}, totalPulled=${totalPulled}, collected=${collectedMessages.length}, pages=${page}, lastPulledMsgId=${maxMsgId}`);
+
+    // 一次性喂给 feedBufferGate
+    if (collectedMessages.length > 0) {
+      feedBufferGate(state, router, groupId, collectedMessages);
+    }
 
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -419,102 +623,6 @@ export async function pullAndBufferGroupMessages(
     console.error(`[ACP-Group] [${identityId}] Error pulling group messages:`, err);
   } finally {
     buffer.pulling = false;
-  }
-}
-
-/**
- * 缓冲群组消息，收到后立即 flush 给 agent（测试模式）
- */
-function bufferGroupMessage(
-  state: IdentityAcpState,
-  groupId: string,
-  msg: { sender: string; content: string; timestamp: number; msg_id?: number }
-): void {
-  const identityId = state.identityId;
-
-  let buffer = state.groupMessageBuffers.get(groupId);
-  const isNew = !buffer;
-  if (!buffer) {
-    buffer = {
-      groupId,
-      messages: [],
-      lastDispatchAt: 0,
-      flushTimer: null,
-      dispatching: false,
-      lastPulledMsgId: 0,
-      pulling: false,
-      seenMsgIds: new Set(),
-    };
-    state.groupMessageBuffers.set(groupId, buffer);
-  }
-
-  // msg_id 去重
-  if (msg.msg_id && msg.msg_id > 0) {
-    if (buffer.seenMsgIds.has(msg.msg_id)) {
-      debugLog(`[${identityId}] bufferGroupMessage DEDUP: skipping msg_id=${msg.msg_id} for group=${groupId}`);
-      return;
-    }
-    buffer.seenMsgIds.add(msg.msg_id);
-    // 防止无限增长：超过 500 则裁剪到 300
-    if (buffer.seenMsgIds.size > 500) {
-      const sorted = Array.from(buffer.seenMsgIds).sort((a, b) => a - b);
-      for (const id of sorted.slice(0, sorted.length - 300)) {
-        buffer.seenMsgIds.delete(id);
-      }
-    }
-  }
-
-  buffer.messages.push(msg);
-  debugLog(`[${identityId}] bufferGroupMessage: group=${groupId}, msg_id=${msg.msg_id ?? 0}, sender=${msg.sender}, bufferSize=${buffer.messages.length}, isNewBuffer=${isNew}`);
-
-  if (buffer.flushTimer) {
-    clearTimeout(buffer.flushTimer);
-    buffer.flushTimer = null;
-  }
-  debugLog(`[${identityId}] bufferGroupMessage: immediate flush group=${groupId}`);
-  void flushGroupMessages(state, groupId);
-}
-
-/**
- * 将缓冲区中的消息 flush 给 agent 处理
- */
-async function flushGroupMessages(state: IdentityAcpState, groupId: string): Promise<void> {
-  const buffer = state.groupMessageBuffers.get(groupId);
-  if (!buffer || buffer.messages.length === 0 || buffer.dispatching) {
-    debugLog(`[${state.identityId}] flushGroupMessages SKIP: group=${groupId}, exists=${!!buffer}, msgCount=${buffer?.messages.length ?? 0}, dispatching=${buffer?.dispatching ?? 'N/A'}`);
-    return;
-  }
-
-  const identityId = state.identityId;
-
-  // 取出所有消息并清空缓冲区
-  const messages = buffer.messages.splice(0);
-  buffer.lastDispatchAt = Date.now();
-  buffer.dispatching = true;
-
-  if (buffer.flushTimer) {
-    clearTimeout(buffer.flushTimer);
-    buffer.flushTimer = null;
-  }
-
-  debugLog(`[${identityId}] flushGroupMessages START: group=${groupId}, messageCount=${messages.length}`);
-  console.log(`[ACP-Group] [${identityId}] Flushing ${messages.length} buffered messages for group=${groupId}`);
-
-  try {
-    // 动态导入避免循环依赖
-    debugLog(`[${identityId}] flushGroupMessages: importing handleGroupMessagesForIdentity...`);
-    const { handleGroupMessagesForIdentity } = await import("./monitor.js");
-    debugLog(`[${identityId}] flushGroupMessages: calling handleGroupMessagesForIdentity...`);
-    await handleGroupMessagesForIdentity(state, groupId, messages);
-    debugLog(`[${identityId}] flushGroupMessages DONE: group=${groupId}`);
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    const errStack = err instanceof Error ? err.stack : undefined;
-    debugLog(`[${identityId}] flushGroupMessages ERROR: group=${groupId}, error=${errMsg}\n${errStack ?? ''}`);
-    console.error(`[ACP-Group] [${identityId}] Error flushing group messages:`, err);
-  } finally {
-    buffer.dispatching = false;
-    debugLog(`[${identityId}] flushGroupMessages FINALLY: group=${groupId}, dispatching=false`);
   }
 }
 
