@@ -37,11 +37,29 @@ export interface MentionInfo {
   triggerType: "normal" | "mention";
 }
 
+// ACP 单个身份配置（多身份模式）
+export interface AcpIdentityEntry {
+  agentName: string;        // Agent 名称 (不含域名)
+  domain?: string;          // ACP 域名，如 agentcp.io
+  seedPassword?: string;    // 种子密码
+  ownerAid?: string;        // 主人的 AID
+  allowFrom?: string[];     // 允许接收消息的 AID 列表
+  agentMdPath?: string;     // agent.md 文件路径，登录后自动上传
+  workspaceDir?: string;    // workspace 目录路径，用于自动生成 agent.md
+  mentionAliases?: string[];  // P1: 提及别名列表
+  profile?: {
+    displayName?: string;
+    description?: string;
+    capabilities?: string[];
+  };
+}
+
 // ACP Channel 配置类型 (acp-ts 版本)
 export interface AcpChannelConfig {
   enabled: boolean;
-  agentName: string;        // Agent 名称 (不含域名)
-  domain: string;           // ACP 域名，如 agentcp.io
+  // 单身份配置（向后兼容）
+  agentName?: string;       // Agent 名称 (不含域名)
+  domain?: string;          // ACP 域名，如 agentcp.io
   seedPassword?: string;    // 种子密码
   ownerAid?: string;        // 主人的 AID
   allowFrom?: string[];     // 允许接收消息的 AID 列表
@@ -54,33 +72,10 @@ export interface AcpChannelConfig {
   };
   // 会话终止控制配置
   session?: AcpSessionConfig;
-  // 多身份配置
+  // 多身份配置：key 为 accountId
   identities?: Record<string, AcpIdentityEntry>;
   // P1 群社交行为配置
   groupSocial?: GroupSocialConfig;
-}
-
-// 身份的 ACP 元数据（存在 IdentityProfile.metadata 中）
-export interface AcpIdentityMeta {
-  agentName: string;
-  domain?: string;
-  seedPassword?: string;
-  ownerAid?: string;
-  allowFrom?: string[];
-  workspaceDir?: string;
-  agentMdPath?: string;
-}
-
-// 多身份配置中单个身份的条目
-export interface AcpIdentityEntry {
-  agentName: string;
-  domain?: string;
-  seedPassword?: string;
-  ownerAid?: string;
-  allowFrom?: string[];
-  workspaceDir?: string;
-  agentMdPath?: string;
-  mentionAliases?: string[];  // P1: 提及别名列表
 }
 
 // 会话终止控制配置
@@ -108,10 +103,10 @@ export interface AcpSessionConfig {
   groupBufferGateMs?: number;         // Buffer Gate 聚合窗口(ms)，默认 3000
 }
 
-// 解析后的账户信息
+// 解析后的账户信息（每个 accountId 一份）
 export interface ResolvedAcpAccount {
-  accountId: string;        // = identityId（多身份）或 "default"（单身份）
-  identityId: string;       // OpenClaw IdentityProfile.id
+  accountId: string;
+  identityId: string;
   agentName: string;
   domain: string;
   fullAid: string;          // 完整 AID: agentName.domain
@@ -256,8 +251,8 @@ export interface ParsedAgentMd {
   fetchedAt: number;
 }
 
-// 单个身份的完整运行时状态
-export interface IdentityAcpState {
+// 运行时状态（按 accountId 隔离）
+export interface AcpRuntimeState {
   identityId: string;
   account: ResolvedAcpAccount;
   aidKey: string;                    // fullAid
@@ -274,3 +269,6 @@ export interface IdentityAcpState {
   groupTargetAid: string | null;
   groupMessageBuffers: Map<string, GroupMessageBuffer>;
 }
+
+/** @deprecated 使用 AcpRuntimeState */
+export type IdentityAcpState = AcpRuntimeState;

@@ -1,4 +1,5 @@
-import type { AcpChannelConfig, ResolvedAcpAccount, AcpSessionState, AcpSessionConfig, IdentityAcpState, GroupVitalityState, MentionInfo, GroupSocialConfig } from "./types.js";
+import type { AcpChannelConfig, ResolvedAcpAccount, AcpSessionState, AcpSessionConfig, AcpRuntimeState, GroupVitalityState, MentionInfo, GroupSocialConfig } from "./types.js";
+import type { IdentityAcpState } from "./types.js"; // backward compat alias
 import { DEFAULT_SESSION_CONFIG } from "./types.js";
 import { buildGroupSituationPrompt, postProcessReply } from "./group-social.js";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
@@ -32,9 +33,9 @@ let currentAcpConfig: AcpChannelConfig | null = null;
 let legacyClient: AcpClient | null = null;
 let legacyIsRunning = false;
 let legacyAccount: ResolvedAcpAccount | null = null;
-let lastDisconnectInfo: { at: number; error?: string } | null = null;
-let lastStartAt: number | null = null;
-let lastStopAt: number | null = null;
+const lastDisconnectByIdentity = new Map<string, { at: number; error?: string }>();
+const lastStartAtByIdentity = new Map<string, number>();
+const lastStopAtByIdentity = new Map<string, number>();
 
 // ===== ACP 网络认知提示词 =====
 
@@ -306,7 +307,9 @@ export async function checkAndUploadAgentMdForIdentity(identityState: IdentityAc
   if (!router) return;
 
   const aid = identityState.aidKey;
-  const wsDir = identityState.account.workspaceDir || currentAcpConfig?.workspaceDir || getWorkspaceDir();
+  const wsDir = identityState.account.workspaceDir
+    || currentAcpConfig?.workspaceDir
+    || getWorkspaceDir(identityState.identityId);
 
   if (wsDir) {
     console.log(`[ACP] [${identityState.identityId}] Generating agent.md from workspace: ${wsDir}`);
@@ -443,12 +446,11 @@ export async function handleInboundMessageForIdentity(
     const runtime = getAcpRuntime();
     const cfg = currentConfig;
 
-    // 身份隔离的 session key
     const sessionIdShort = sessionId.substring(0, 8);
-    const sessionKey = identityId === "default"
-      ? `agent:main:acp:session:${sender}:${sessionIdShort}`
-      : `agent:main:acp:id:${identityId}:session:${sender}:${sessionIdShort}`;
     const agentId = "main";
+    const sessionKey = identityId === "default"
+      ? `agent:${agentId}:acp:session:${sender}:${sessionIdShort}`
+      : `agent:${agentId}:acp:${identityId}:session:${sender}:${sessionIdShort}`;
     const senderName = sender.split(".")[0];
 
     const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, { agentId });
@@ -619,10 +621,10 @@ export async function handleGroupMessagesForIdentity(
     const runtime = getAcpRuntime();
     const cfg = currentConfig;
 
-    const sessionKey = identityId === "default"
-      ? `agent:main:acp:group:${groupId}`
-      : `agent:main:acp:id:${identityId}:group:${groupId}`;
     const agentId = "main";
+    const sessionKey = identityId === "default"
+      ? `agent:${agentId}:acp:group:${groupId}`
+      : `agent:${agentId}:acp:${identityId}:group:${groupId}`;
 
     debugLog(`[${identityId}] sessionKey=${sessionKey}`);
 
@@ -760,7 +762,9 @@ export async function syncAgentMdForIdentity(identityId?: string): Promise<{ suc
   if (!state) return { success: false, error: `Identity ${identityId ?? 'default'} not found` };
 
   const aid = state.aidKey;
-  const wsDir = state.account.workspaceDir || currentAcpConfig?.workspaceDir || getWorkspaceDir();
+  const wsDir = state.account.workspaceDir
+    || currentAcpConfig?.workspaceDir
+    || getWorkspaceDir(state.identityId);
 
   if (wsDir) {
     const sources = loadAgentMdSources(wsDir, state.identityId);
@@ -817,7 +821,8 @@ export async function startIdentityWithGateway(
   currentConfig = ctx.cfg;
   currentAcpConfig = acpConfig;
   router.setConfig(ctx.cfg, acpConfig);
-  lastStartAt = Date.now();
+  const startAt = Date.now();
+  lastStartAtByIdentity.set(identityId, startAt);
 
   // 注册入站处理器（幂等）
   router.setInboundHandler(handleInboundMessageForIdentity);
@@ -830,7 +835,7 @@ export async function startIdentityWithGateway(
   const state = router.getState(identityId)!;
   state.reconnectAttempts = 0;
 
-  ctx.setStatus({ accountId: identityId, running: true, lastStartAt });
+  ctx.setStatus({ accountId: identityId, running: true, lastStartAt: startAt });
   log.info(`[${identityId}] Starting ACP gateway for ${ctx.account.fullAid}`);
 
   while (!ctx.abortSignal.aborted) {
@@ -873,10 +878,11 @@ export async function startIdentityWithGateway(
       stopIdleCheckerForIdentity(state);
       await closeGroupClientForIdentity(state, router);
       state.reconnectAttempts++;
-      lastDisconnectInfo = { at: Date.now() };
+      const disconnectInfo = { at: Date.now() };
+      lastDisconnectByIdentity.set(identityId, disconnectInfo);
       ctx.setStatus({
         accountId: identityId, running: true, connected: false,
-        reconnectAttempts: state.reconnectAttempts, lastDisconnect: lastDisconnectInfo,
+        reconnectAttempts: state.reconnectAttempts, lastDisconnect: disconnectInfo,
       });
 
     } catch (err) {
@@ -887,11 +893,12 @@ export async function startIdentityWithGateway(
       state.reconnectAttempts++;
       const errMsg = err instanceof Error ? err.message : String(err);
       state.lastError = errMsg;
-      lastDisconnectInfo = { at: Date.now(), error: errMsg };
+      const disconnectInfo = { at: Date.now(), error: errMsg };
+      lastDisconnectByIdentity.set(identityId, disconnectInfo);
 
       ctx.setStatus({
         accountId: identityId, running: true, connected: false,
-        reconnectAttempts: state.reconnectAttempts, lastError: errMsg, lastDisconnect: lastDisconnectInfo,
+        reconnectAttempts: state.reconnectAttempts, lastError: errMsg, lastDisconnect: disconnectInfo,
       });
 
       const delayMs = computeBackoff(state.reconnectAttempts);
@@ -925,45 +932,12 @@ export async function stopIdentityFromGateway(
     await router.stopIdentity(identityId);
   }
 
-  lastStopAt = Date.now();
-  ctx.setStatus({ accountId: identityId, running: false, connected: false, lastStopAt });
+  const stopAt = Date.now();
+  lastStopAtByIdentity.set(identityId, stopAt);
+  ctx.setStatus({ accountId: identityId, running: false, connected: false, lastStopAt: stopAt });
 }
 
-// ===== 向后兼容导出 =====
-
-/** @deprecated 使用 startIdentityWithGateway */
-export async function startAcpMonitor(
-  cfg: OpenClawConfig, acpConfig: AcpChannelConfig, account: ResolvedAcpAccount
-): Promise<void> {
-  currentConfig = cfg;
-  currentAcpConfig = acpConfig;
-  legacyAccount = account;
-
-  const router = getOrCreateRouter();
-  router.setConfig(cfg, acpConfig);
-  router.setInboundHandler(handleInboundMessageForIdentity);
-  router.registerIdentity("default", account);
-
-  await router.startIdentity("default", cfg, acpConfig);
-  const state = router.getState("default")!;
-  startIdleCheckerForIdentity(state);
-  await checkAndUploadAgentMdForIdentity(state);
-  legacyIsRunning = true;
-}
-
-/** @deprecated 使用 stopIdentityFromGateway */
-export async function stopAcpMonitor(): Promise<void> {
-  const router = getRouter();
-  if (router) {
-    const state = router.getState("default");
-    if (state) stopIdleCheckerForIdentity(state);
-    await router.stopIdentity("default");
-  }
-  legacyIsRunning = false;
-  legacyAccount = null;
-  currentConfig = null;
-  currentAcpConfig = null;
-}
+// ===== 向后兼容导出（单身份版保留最小兼容面）=====
 
 /** @deprecated 使用 startIdentityWithGateway */
 export async function startAcpMonitorWithGateway(
@@ -983,38 +957,58 @@ export function getAcpClient(): AcpClient | null {
   return legacyClient;
 }
 
-export function getCurrentAccount(): ResolvedAcpAccount | null {
+export function getCurrentAccount(identityId?: string): ResolvedAcpAccount | null {
   const router = getRouter();
   if (router) {
-    const state = router.getDefaultState();
+    const state = identityId ? router.getState(identityId) : router.getDefaultState();
     return state?.account ?? null;
   }
   return legacyAccount;
 }
 
-export function isMonitorRunning(): boolean {
+export function isMonitorRunning(identityId?: string): boolean {
   const router = getRouter();
   if (router) {
-    const state = router.getDefaultState();
-    return state?.isRunning ?? false;
+    if (identityId) {
+      return router.getState(identityId)?.isRunning ?? false;
+    }
+    return router.getAllStates().some((s) => s.isRunning);
   }
   return legacyIsRunning;
 }
 
-export function getSessionState(sessionId: string): AcpSessionState | undefined {
+export function getSessionState(sessionId: string, identityId?: string): AcpSessionState | undefined {
   const router = getRouter();
   if (router) {
-    const state = router.getDefaultState();
-    return state?.sessionStates.get(sessionId);
+    if (identityId) {
+      const state = router.getState(identityId);
+      return state?.sessionStates.get(sessionId);
+    }
+    for (const state of router.getAllStates()) {
+      const found = state.sessionStates.get(sessionId);
+      if (found) return found;
+    }
+    return undefined;
   }
   return undefined;
 }
 
-export function getAllSessionStates(): Map<string, AcpSessionState> {
+export function getAllSessionStates(identityId?: string): Map<string, AcpSessionState> {
   const router = getRouter();
   if (router) {
-    const state = router.getDefaultState();
-    return state ? new Map(state.sessionStates) : new Map();
+    if (identityId) {
+      const state = router.getState(identityId);
+      return state ? new Map(state.sessionStates) : new Map();
+    }
+    const merged = new Map<string, AcpSessionState>();
+    for (const state of router.getAllStates()) {
+      for (const [sid, sessionState] of state.sessionStates.entries()) {
+        // 多身份时用 identityId 前缀避免 key 冲突，单身份保持原始 key
+        const key = router.getAllStates().length > 1 ? `${state.identityId}:${sid}` : sid;
+        merged.set(key, sessionState);
+      }
+    }
+    return merged;
   }
   return new Map();
 }
@@ -1034,23 +1028,31 @@ export async function closeSessionManually(sessionId: string, reason: string = '
 }
 
 /** @deprecated 使用 syncAgentMdForIdentity */
-export async function syncAgentMd(): Promise<{ success: boolean; url?: string; error?: string }> {
-  return syncAgentMdForIdentity();
+export async function syncAgentMd(identityId?: string): Promise<{ success: boolean; url?: string; error?: string }> {
+  return syncAgentMdForIdentity(identityId);
 }
 
 /** @deprecated 使用 checkAndUploadAgentMdForIdentity */
-export async function checkAndUploadAgentMd(): Promise<void> {
+export async function checkAndUploadAgentMd(identityId?: string): Promise<void> {
   const router = getRouter();
   if (!router) return;
-  const state = router.getDefaultState();
-  if (state) await checkAndUploadAgentMdForIdentity(state);
+  if (identityId) {
+    const state = router.getState(identityId);
+    if (state) await checkAndUploadAgentMdForIdentity(state);
+    return;
+  }
+  for (const state of router.getAllStates()) {
+    await checkAndUploadAgentMdForIdentity(state);
+  }
 }
 
 export function getConnectionSnapshot(identityId?: string): ChannelAccountSnapshot {
   const router = getRouter();
+  const normalizedIdentityId = identityId?.trim() || undefined;
   const state = router
-    ? (identityId ? router.getState(identityId) : router.getDefaultState())
+    ? (normalizedIdentityId ? router.getState(normalizedIdentityId) : router.getDefaultState()) ?? null
     : null;
+  const snapshotIdentityId = state?.identityId ?? normalizedIdentityId ?? "default";
 
   if (state) {
     return {
@@ -1060,10 +1062,10 @@ export function getConnectionSnapshot(identityId?: string): ChannelAccountSnapsh
       connected: router!.multiClient.isConnected(state.aidKey),
       reconnectAttempts: state.reconnectAttempts,
       lastConnectedAt: state.lastConnectedAt,
-      lastDisconnect: lastDisconnectInfo,
+      lastDisconnect: lastDisconnectByIdentity.get(snapshotIdentityId) ?? null,
       lastError: state.lastError,
-      lastStartAt,
-      lastStopAt,
+      lastStartAt: lastStartAtByIdentity.get(snapshotIdentityId) ?? null,
+      lastStopAt: lastStopAtByIdentity.get(snapshotIdentityId) ?? null,
       lastInboundAt: state.lastInboundAt,
       lastOutboundAt: state.lastOutboundAt,
       mode: "websocket",
@@ -1071,15 +1073,15 @@ export function getConnectionSnapshot(identityId?: string): ChannelAccountSnapsh
   }
 
   return {
-    accountId: "default",
+    accountId: snapshotIdentityId,
     running: false,
     connected: false,
     reconnectAttempts: 0,
     lastConnectedAt: null,
-    lastDisconnect: null,
+    lastDisconnect: lastDisconnectByIdentity.get(snapshotIdentityId) ?? null,
     lastError: null,
-    lastStartAt,
-    lastStopAt,
+    lastStartAt: lastStartAtByIdentity.get(snapshotIdentityId) ?? null,
+    lastStopAt: lastStopAtByIdentity.get(snapshotIdentityId) ?? null,
     lastInboundAt: null,
     lastOutboundAt: null,
     mode: "websocket",
@@ -1089,7 +1091,9 @@ export function getConnectionSnapshot(identityId?: string): ChannelAccountSnapsh
 export function recordOutbound(identityId?: string): void {
   const router = getRouter();
   if (router) {
-    const id = identityId ?? "default";
-    router.recordOutbound(id);
+    const targetIdentityId = identityId ?? router.getDefaultState()?.identityId;
+    if (targetIdentityId) {
+      router.recordOutbound(targetIdentityId);
+    }
   }
 }

@@ -5,12 +5,30 @@ import { getContactManager } from "./contacts.js";
 import { getCreditLevel } from "./credit.js";
 import { getRouter } from "./identity-router.js";
 
-function resolveIdentityIdByAid(selfAid?: string): string | undefined {
-  if (!selfAid) return undefined;
+function resolveIdentityIdByAid(selfAid?: string): string | null {
   const router = getRouter();
-  if (!router) return undefined;
-  const state = router.getStateByAid(selfAid);
-  return state?.identityId;
+  if (!router) return null;
+
+  const normalizedAid = selfAid?.trim();
+  if (!normalizedAid) {
+    return null;
+  }
+
+  const byAid = router.getStateByAid(normalizedAid);
+  if (byAid) return byAid.identityId;
+
+  const byIdentity = router.getState(normalizedAid);
+  if (byIdentity) return byIdentity.identityId;
+
+  for (const identityId of router.listIdentityIds()) {
+    const state = router.getState(identityId);
+    if (!state) continue;
+    if (state.account.agentName === normalizedAid || state.aidKey.startsWith(`${normalizedAid}.`)) {
+      return state.identityId;
+    }
+  }
+
+  return null;
 }
 
 // ===== 工具 1: acp_fetch_agent_md =====
@@ -109,7 +127,19 @@ const manageContactsTool: AgentTool<typeof ManageContactsParams, unknown> = {
     "Use this to view and manage the agent's contact list and trust relationships.",
   parameters: ManageContactsParams,
   async execute(_toolCallId, params: ManageContactsInput): Promise<AgentToolResult<unknown>> {
+    if (!params.self_aid?.trim()) {
+      return textResult(
+        "Error: self_aid is required. Pass your full AID in every acp_manage_contacts call.",
+        { error: "self_aid required" },
+      );
+    }
     const identityId = resolveIdentityIdByAid(params.self_aid);
+    if (!identityId) {
+      return textResult(
+        `Error: cannot resolve identity for self_aid=${params.self_aid}. Make sure ACP account is connected.`,
+        { error: "identity not found" },
+      );
+    }
     const contacts = getContactManager(identityId);
     const { action, aid } = params;
 

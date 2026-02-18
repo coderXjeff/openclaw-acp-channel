@@ -13,24 +13,24 @@ export function parseTarget(to: string): { targetAid: string; sessionId: string 
 }
 
 /**
- * 发送消息到 ACP 网络
+ * 发送消息到 ACP 网络（单身份版）
  */
 export async function sendAcpMessage(params: {
   to: string;
   sessionId: string;
   content: string;
-  identityId?: string;  // 指定用哪个身份发送
+  accountId?: string | null;
 }): Promise<void> {
   const router = getRouter();
+  const normalizedAccountId = params.accountId?.trim() || undefined;
 
   if (router) {
-    // 多身份模式：通过 router 获取对应身份的 AID
-    const state = params.identityId
-      ? router.getState(params.identityId)
+    const state = normalizedAccountId
+      ? router.getState(normalizedAccountId)
       : router.getDefaultState();
 
     if (!state) {
-      throw new Error(`Identity ${params.identityId ?? 'default'} not found`);
+      throw new Error(`Identity not found${normalizedAccountId ? `: ${normalizedAccountId}` : ""}`);
     }
 
     if (!router.multiClient.isConnected(state.aidKey)) {
@@ -52,9 +52,9 @@ export async function sendAcpMessage(params: {
     throw new Error("ACP client not connected");
   }
 
-  const account = getCurrentAccount();
+  const account = getCurrentAccount(normalizedAccountId);
   const fromAid = account?.fullAid || "unknown";
   const messageWithAid = `[From: ${fromAid}]\n[To: ${params.to}]\n\n${params.content}`;
   await client.sendMessage(params.to, messageWithAid);
-  recordOutbound();
+  recordOutbound(normalizedAccountId);
 }

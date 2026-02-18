@@ -4,6 +4,7 @@ import { DEFAULT_SESSION_CONFIG } from "./types.js";
 type JSONSchema = {
   type?: string;
   properties?: Record<string, JSONSchema>;
+  patternProperties?: Record<string, JSONSchema>;
   additionalProperties?: JSONSchema | boolean;
   items?: JSONSchema;
   required?: string[];
@@ -13,6 +14,70 @@ type JSONSchema = {
   minimum?: number;
   minItems?: number;
   minLength?: number;
+  minProperties?: number;
+  const?: unknown;
+  if?: JSONSchema;
+  then?: JSONSchema;
+  else?: JSONSchema;
+  oneOf?: JSONSchema[];
+  anyOf?: JSONSchema[];
+  allOf?: JSONSchema[];
+  not?: JSONSchema;
+};
+
+const acpIdentityEntrySchema: JSONSchema = {
+  type: "object",
+  properties: {
+    agentName: {
+      type: "string",
+      description: "Agent name (without domain, e.g., 'my-agent')",
+      pattern: "^[a-z0-9-]+$",
+    },
+    domain: {
+      type: "string",
+      default: "agentcp.io",
+      description: "ACP domain (e.g., agentcp.io)",
+    },
+    seedPassword: {
+      type: "string",
+      description: "Seed password for ACP identity",
+    },
+    ownerAid: {
+      type: "string",
+      description: "Owner's AID (e.g., 'owner-name.agentcp.io')",
+    },
+    allowFrom: {
+      type: "array",
+      items: { type: "string" },
+      description: "List of AIDs allowed to send messages (use * for all)",
+      default: [],
+    },
+    agentMdPath: {
+      type: "string",
+      description: "Path to agent.md file (auto-upload on login)",
+    },
+    workspaceDir: {
+      type: "string",
+      description: "Workspace directory path for this identity",
+    },
+    profile: {
+      type: "object",
+      properties: {
+        displayName: { type: "string" },
+        description: { type: "string" },
+        capabilities: {
+          type: "array",
+          items: { type: "string" },
+        },
+      },
+    },
+    mentionAliases: {
+      type: "array",
+      items: { type: "string" },
+      description: "Mention aliases for this identity in group chats",
+    },
+  },
+  required: ["agentName"],
 };
 
 export const acpConfigSchema: JSONSchema = {
@@ -64,6 +129,15 @@ export const acpConfigSchema: JSONSchema = {
           items: { type: "string" },
         },
       },
+    },
+    identities: {
+      type: "object",
+      description: "Multi-identity ACP account map. Key is accountId.",
+      minProperties: 1,
+      patternProperties: {
+        "^[a-zA-Z0-9_-]+$": acpIdentityEntrySchema,
+      },
+      additionalProperties: false,
     },
     session: {
       type: "object",
@@ -135,51 +209,6 @@ export const acpConfigSchema: JSONSchema = {
         },
       },
     },
-    identities: {
-      type: "object",
-      description: "Multi-identity configuration. Each key is an identity ID (e.g. IdentityProfile.id), value is the ACP config for that identity",
-      additionalProperties: {
-        type: "object",
-        required: ["agentName"],
-        properties: {
-          agentName: {
-            type: "string",
-            description: "Agent name for this identity (without domain)",
-            pattern: "^[a-z0-9-]+$",
-          },
-          domain: {
-            type: "string",
-            description: "ACP domain override (falls back to top-level domain)",
-          },
-          seedPassword: {
-            type: "string",
-            description: "Seed password for this identity's ACP key pair",
-          },
-          ownerAid: {
-            type: "string",
-            description: "Owner AID override (falls back to top-level ownerAid)",
-          },
-          allowFrom: {
-            type: "array",
-            items: { type: "string" },
-            description: "Allowed sender AIDs override (falls back to top-level allowFrom)",
-          },
-          workspaceDir: {
-            type: "string",
-            description: "Workspace directory for auto-generating agent.md",
-          },
-          agentMdPath: {
-            type: "string",
-            description: "Path to agent.md file for this identity",
-          },
-          mentionAliases: {
-            type: "array",
-            items: { type: "string" },
-            description: "Mention aliases for this identity",
-          },
-        },
-      },
-    },
     groupSocial: {
       type: "object",
       description: "Group social behavior (P1: vitality, mention, reply constraints)",
@@ -192,4 +221,15 @@ export const acpConfigSchema: JSONSchema = {
       },
     },
   },
+  allOf: [
+    {
+      if: { properties: { enabled: { const: true } } },
+      then: {
+        oneOf: [
+          { required: ["agentName"] },
+          { required: ["identities"] },
+        ],
+      },
+    },
+  ],
 };

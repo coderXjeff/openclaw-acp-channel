@@ -8,7 +8,8 @@
  */
 import { LocalCursorStore } from "acp-ts";
 import type { ACPGroupEventHandler } from "acp-ts";
-import type { IdentityAcpState, GroupMessageBuffer, GroupMessageItem, GroupSocialConfig, GroupVitalityState, MentionInfo } from "./types.js";
+import type { AcpRuntimeState, GroupMessageBuffer, GroupMessageItem, GroupSocialConfig, GroupVitalityState, MentionInfo } from "./types.js";
+import type { IdentityAcpState } from "./types.js"; // backward compat alias
 import { DEFAULT_SESSION_CONFIG, DEFAULT_GROUP_SOCIAL_CONFIG } from "./types.js";
 import type { AcpIdentityRouter } from "./identity-router.js";
 import { loadAgentMdSources } from "./agent-md-sources.js";
@@ -101,7 +102,7 @@ function loadIdentityDisplayAliases(state: IdentityAcpState, router: AcpIdentity
   const aliases: string[] = [];
   try {
     const acpConfig = router.getAcpConfig();
-    const wsDir = state.account.workspaceDir || acpConfig?.workspaceDir || getWorkspaceDir();
+    const wsDir = state.account.workspaceDir || acpConfig?.workspaceDir || getWorkspaceDir(state.identityId);
     if (!wsDir) return aliases;
     const sources = loadAgentMdSources(wsDir, state.identityId);
     const identityMd = sources.identity;

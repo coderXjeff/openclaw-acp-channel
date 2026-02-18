@@ -1,6 +1,7 @@
 import type { ReplyPayload } from "openclaw/plugin-sdk";
 import { syncAgentMd, getConnectionSnapshot, getAllSessionStates } from "./monitor.js";
 import { getContactManager } from "./contacts.js";
+import { getRouter } from "./identity-router.js";
 
 /** 命令定义类型（openclaw 未导出 OpenClawPluginCommandDefinition，本地定义兼容类型） */
 type PluginCommandDefinition = {
@@ -18,11 +19,12 @@ export function createSyncCommand(): PluginCommandDefinition {
   return {
     name: "acp-sync",
     description: "Manually sync agent.md to the ACP network",
-    acceptsArgs: false,
+    acceptsArgs: true,
     requireAuth: true,
-    handler: async () => {
+    handler: async (ctx) => {
       try {
-        const result = await syncAgentMd();
+        const identityId = (ctx.args ?? "").trim() || undefined;
+        const result = await syncAgentMd(identityId);
         if (result.success) {
           return { text: `agent.md synced successfully.${result.url ? ` URL: ${result.url}` : ""}` };
         }
@@ -42,40 +44,54 @@ export function createStatusCommand(): PluginCommandDefinition {
   return {
     name: "acp-status",
     description: "Show ACP connection status, contacts summary, and active sessions",
-    acceptsArgs: false,
+    acceptsArgs: true,
     requireAuth: true,
-    handler: () => {
-      const snapshot = getConnectionSnapshot();
-      const contacts = getContactManager().list();
-      const sessions = getAllSessionStates();
+    handler: (ctx) => {
+      const targetIdentityId = (ctx.args ?? "").trim() || undefined;
+      const router = getRouter();
+      const allIdentityIds = router?.listIdentityIds() ?? [];
+      const identityIds = targetIdentityId ? [targetIdentityId] : allIdentityIds;
 
-      let activeSessions = 0;
-      for (const s of sessions.values()) {
-        if (s.status === "active") activeSessions++;
+      if (identityIds.length === 0) {
+        const snapshot = getConnectionSnapshot();
+        return {
+          text: [
+            "## ACP Status",
+            "",
+            `**Account:** ${snapshot.name ?? snapshot.accountId}`,
+            `**Running:** ${snapshot.running ? "yes" : "no"}`,
+            `**Connected:** ${snapshot.connected ? "yes" : "no"}`,
+          ].join("\n"),
+        };
       }
 
-      const lines: string[] = [
-        "## ACP Status",
-        "",
-        `**Account:** ${snapshot.name ?? snapshot.accountId}`,
-        `**Running:** ${snapshot.running ? "yes" : "no"}`,
-        `**Connected:** ${snapshot.connected ? "yes" : "no"}`,
-      ];
+      const lines: string[] = ["## ACP Status"];
 
-      if (snapshot.reconnectAttempts) {
-        lines.push(`**Reconnect attempts:** ${snapshot.reconnectAttempts}`);
-      }
-      if (snapshot.lastConnectedAt) {
-        lines.push(`**Last connected:** ${new Date(snapshot.lastConnectedAt).toISOString()}`);
-      }
-      if (snapshot.lastError) {
-        lines.push(`**Last error:** ${snapshot.lastError}`);
-      }
+      for (const identityId of identityIds) {
+        const snapshot = getConnectionSnapshot(identityId);
+        const contacts = getContactManager(identityId).list();
+        const sessions = getAllSessionStates(identityId);
+        let activeSessions = 0;
+        for (const s of sessions.values()) {
+          if (s.status === "active") activeSessions++;
+        }
 
-      lines.push("");
-      lines.push(`**Contacts:** ${contacts.length}`);
-      lines.push(`**Active sessions:** ${activeSessions}`);
-      lines.push(`**Total sessions (incl. closed):** ${sessions.size}`);
+        lines.push("");
+        lines.push(`### ${snapshot.name ?? identityId}`);
+        lines.push(`- Account: ${snapshot.accountId}`);
+        lines.push(`- Running: ${snapshot.running ? "yes" : "no"}`);
+        lines.push(`- Connected: ${snapshot.connected ? "yes" : "no"}`);
+        lines.push(`- Reconnect attempts: ${snapshot.reconnectAttempts ?? 0}`);
+        if (snapshot.lastConnectedAt) {
+          lines.push(`- Last connected: ${new Date(snapshot.lastConnectedAt).toISOString()}`);
+        }
+        if (snapshot.lastError) {
+          lines.push(`- Last error: ${snapshot.lastError}`);
+        }
+        lines.push(`- Contacts: ${contacts.length}`);
+        lines.push(`- Active sessions: ${activeSessions}`);
+        lines.push(`- Total sessions (incl. closed): ${sessions.size}`);
+      }
 
       return { text: lines.join("\n") };
     },

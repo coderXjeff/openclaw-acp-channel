@@ -6,7 +6,7 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { GroupOperations } from "acp-ts";
 import { getRouter } from "./identity-router.js";
 import { getGroupOps, getGroupAcp } from "./group-client.js";
-import type { IdentityAcpState } from "./types.js";
+import type { AcpRuntimeState } from "./types.js";
 import * as fs from "fs";
 
 const DEBUG_LOG = "/tmp/acp-group-debug.log";
@@ -56,14 +56,14 @@ function textResult(text: string, details: unknown): AgentToolResult<unknown> {
   return { content: [{ type: "text", text }], details };
 }
 
-function resolveStateByAid(aid?: string): { state: IdentityAcpState; error?: undefined } | { state?: undefined; error: string } {
+function resolveStateByAid(aid?: string): { state: AcpRuntimeState; error?: undefined } | { state?: undefined; error: string } {
   const router = getRouter();
   if (!router) {
     debugLog(`resolveStateByAid FAIL: router is null`);
     return { error: "ACP router not initialized. Is ACP connected?" };
   }
 
-  let state: IdentityAcpState | undefined;
+  let state: AcpRuntimeState | undefined;
 
   if (aid) {
     // 1. 精确匹配完整 AID（如 "guard.agentcp.io"）

@@ -82,6 +82,7 @@ export async function requestAiSessionRating(
   state: AcpSessionState,
   sessionKey: string,
   cfg: OpenClawConfig,
+  identityId?: string,
 ): Promise<AiSessionRating | null> {
   // 不足 2 轮不值得 AI 评价
   if (state.turns < 2) return null;
@@ -129,7 +130,7 @@ export async function requestAiSessionRating(
       From: "acp:system:rating",
       To: "acp:self",
       SessionKey: sessionKey,
-      AccountId: "default",
+      AccountId: identityId ?? "default",
       ChatType: "direct",
       SenderName: "system",
       SenderId: "system",
@@ -202,16 +203,17 @@ export async function rateSession(state: AcpSessionState, cfg: OpenClawConfig, i
   try {
     const ruleBreakdown = calculateSessionScore(state);
     const sessionIdShort = state.sessionId.substring(0, 8);
+    const agentId = "main";
     const sessionKey = identityId && identityId !== "default"
-      ? `agent:main:acp:id:${identityId}:session:${state.targetAid}:${sessionIdShort}`
-      : `agent:main:acp:session:${state.targetAid}:${sessionIdShort}`;
+      ? `agent:${agentId}:acp:${identityId}:session:${state.targetAid}:${sessionIdShort}`
+      : `agent:${agentId}:acp:session:${state.targetAid}:${sessionIdShort}`;
 
     console.log(
       `[ACP] Session ${state.sessionId} rule score: ${ruleBreakdown.total} ` +
       `(completion=${ruleBreakdown.completion}, engagement=${ruleBreakdown.engagement}, efficiency=${ruleBreakdown.efficiency})`,
     );
 
-    const aiRating = await requestAiSessionRating(state, sessionKey, cfg);
+    const aiRating = await requestAiSessionRating(state, sessionKey, cfg, identityId);
 
     if (aiRating) {
       const aiAvg = Math.round((aiRating.relevance + aiRating.cooperation + aiRating.value) / 3);

@@ -1,8 +1,9 @@
 /**
- * ACP 身份路由器 — AID ↔ 身份的固定映射 + 入站消息路由
- * 每个身份拥有独立的运行时状态（会话、联系人、agent.md）
+ * ACP 身份路由器
+ * 管理多 accountId <-> AID 的运行时状态与消息路由。
  */
-import type { ResolvedAcpAccount, AcpChannelConfig, IdentityAcpState } from "./types.js";
+import type { ResolvedAcpAccount, AcpChannelConfig, AcpRuntimeState } from "./types.js";
+import type { IdentityAcpState } from "./types.js";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import type { ChannelGatewayContext, ChannelLogSink } from "./plugin-types.js";
 import { AcpMultiClient, type AidInstanceOptions } from "./acp-multi-client.js";
@@ -10,14 +11,12 @@ import type { ConnectionStatus } from "./acp-multi-client.js";
 import { getContactManager } from "./contacts.js";
 
 export class AcpIdentityRouter {
-  // AID → identityId 固定映射
+  private states = new Map<string, AcpRuntimeState>();
   private aidToIdentityId = new Map<string, string>();
-  // identityId → 运行时状态
-  private states = new Map<string, IdentityAcpState>();
-  // 共享的多 AID 客户端
+  // 共享的多 AID 客户端（单身份下只连接一个 AID）
   public multiClient: AcpMultiClient;
   // 入站消息处理器（由 monitor.ts 注入）
-  private inboundHandler: ((state: IdentityAcpState, sender: string, sessionId: string, identifyingCode: string, content: string) => void) | null = null;
+  private inboundHandler: ((state: AcpRuntimeState, sender: string, sessionId: string, identifyingCode: string, content: string) => void) | null = null;
   // 共享配置
   private currentConfig: OpenClawConfig | null = null;
   private currentAcpConfig: AcpChannelConfig | null = null;
@@ -29,7 +28,7 @@ export class AcpIdentityRouter {
   /**
    * 注册入站消息处理器
    */
-  setInboundHandler(handler: (state: IdentityAcpState, sender: string, sessionId: string, identifyingCode: string, content: string) => void): void {
+  setInboundHandler(handler: (state: AcpRuntimeState, sender: string, sessionId: string, identifyingCode: string, content: string) => void): void {
     this.inboundHandler = handler;
   }
 
@@ -37,7 +36,12 @@ export class AcpIdentityRouter {
    * 注册一个身份
    */
   registerIdentity(identityId: string, account: ResolvedAcpAccount): void {
-    const state: IdentityAcpState = {
+    const existing = this.states.get(identityId);
+    if (existing) {
+      this.aidToIdentityId.delete(existing.aidKey);
+    }
+
+    const state: AcpRuntimeState = {
       identityId,
       account,
       aidKey: account.fullAid,
@@ -63,7 +67,7 @@ export class AcpIdentityRouter {
   /**
    * 通过 AID 查找身份状态
    */
-  getStateByAid(aid: string): IdentityAcpState | undefined {
+  getStateByAid(aid: string): AcpRuntimeState | undefined {
     const identityId = this.aidToIdentityId.get(aid);
     return identityId ? this.states.get(identityId) : undefined;
   }
@@ -71,15 +75,22 @@ export class AcpIdentityRouter {
   /**
    * 通过 identityId 查找身份状态
    */
-  getState(identityId: string): IdentityAcpState | undefined {
+  getState(identityId: string): AcpRuntimeState | undefined {
     return this.states.get(identityId);
   }
 
   /**
    * 获取默认身份状态（兼容单身份模式）
    */
-  getDefaultState(): IdentityAcpState | undefined {
+  getDefaultState(): AcpRuntimeState | undefined {
     return this.states.get("default") ?? this.states.values().next().value;
+  }
+
+  /**
+   * 返回当前全部身份状态
+   */
+  getAllStates(): AcpRuntimeState[] {
+    return Array.from(this.states.values());
   }
 
   /**
@@ -166,9 +177,11 @@ export class AcpIdentityRouter {
       state.idleCheckInterval = null;
     }
 
+    this.aidToIdentityId.delete(state.aidKey);
     this.multiClient.disconnectAid(state.aidKey);
     state.isRunning = false;
     state.sessionStates.clear();
+    this.states.delete(identityId);
     console.log(`[ACP-Router] Stopped identity ${identityId}`);
   }
 

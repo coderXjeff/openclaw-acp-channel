@@ -5,7 +5,7 @@ import type {
   ChannelStatusIssue,
 } from "./plugin-types.js";
 import type { ResolvedAcpAccount } from "./types.js";
-import { getConnectionSnapshot, isMonitorRunning } from "./monitor.js";
+import { getConnectionSnapshot } from "./monitor.js";
 import { AgentCP } from "acp-ts/dist/agentcp.js";
 import * as path from "path";
 
@@ -107,12 +107,15 @@ export const acpStatusAdapter: ChannelStatusAdapter<ResolvedAcpAccount, AcpProbe
 
     for (const snap of accounts) {
       if (!snap.configured) {
+        const fix = snap.accountId === "default"
+          ? "Set channels.acp.agentName or channels.acp.identities"
+          : `Set channels.acp.identities.${snap.accountId}.agentName`;
         issues.push({
           channel: "acp",
           accountId: snap.accountId,
           kind: "config",
           message: "Agent name not configured",
-          fix: "Set channels.acp.agentName in config",
+          fix,
         });
       }
 

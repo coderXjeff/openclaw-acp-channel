@@ -1,7 +1,7 @@
 // IMPORTANT: Import polyfill FIRST before any related imports
 import "./src/node-polyfill.js";
 
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi, OpenClawConfig } from "openclaw/plugin-sdk";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
 import { acpChannelPlugin } from "./src/channel.js";
 import { setAcpRuntime } from "./src/runtime.js";
@@ -10,6 +10,28 @@ import { checkAndUploadAgentMd } from "./src/monitor.js";
 import { createFetchAgentMdTool, createManageContactsTool } from "./src/tools.js";
 import { createGroupTool } from "./src/group-tools.js";
 import { createSyncCommand, createStatusCommand } from "./src/commands.js";
+
+function resolveAcpAccountIdsForAgent(cfg: OpenClawConfig | undefined, agentId?: string): string[] {
+  const normalizedAgentId = agentId?.trim();
+  if (!normalizedAgentId) {
+    return ["default"];
+  }
+
+  const bindings = cfg?.bindings;
+  if (!Array.isArray(bindings)) {
+    return ["default"];
+  }
+
+  const accountIds = new Set<string>();
+  for (const binding of bindings) {
+    if (!binding || binding.agentId !== normalizedAgentId) continue;
+    if (binding.match?.channel !== "acp") continue;
+    const accountId = binding.match.accountId?.trim() || "default";
+    accountIds.add(accountId);
+  }
+
+  return accountIds.size > 0 ? Array.from(accountIds) : ["default"];
+}
 
 const plugin = {
   id: "acp",
@@ -30,8 +52,11 @@ const plugin = {
     // 通过 before_agent_start 钩子自动发现 workspaceDir 并检查同步
     api.on("before_agent_start", async (_event, ctx) => {
       if (ctx.workspaceDir) {
-        updateWorkspaceDir(ctx.workspaceDir);
-        await checkAndUploadAgentMd();
+        const accountIds = resolveAcpAccountIdsForAgent(api.config, ctx.agentId);
+        for (const accountId of accountIds) {
+          updateWorkspaceDir(ctx.workspaceDir, accountId);
+          await checkAndUploadAgentMd(accountId);
+        }
       }
     });
 

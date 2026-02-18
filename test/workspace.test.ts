@@ -28,6 +28,15 @@ describe("workspace", () => {
     expect(getWorkspaceDir()).toBe("/tmp/test-workspace");
   });
 
+  it("支持按 identityId 存储 workspaceDir", async () => {
+    const { updateWorkspaceDir, getWorkspaceDir } = await freshImport();
+    updateWorkspaceDir("/tmp/ws-work", "work");
+    updateWorkspaceDir("/tmp/ws-personal", "personal");
+    expect(getWorkspaceDir("work")).toBe("/tmp/ws-work");
+    expect(getWorkspaceDir("personal")).toBe("/tmp/ws-personal");
+    expect(getWorkspaceDir("unknown")).toBeNull();
+  });
+
   it("updateWorkspaceDir 相同值不重复更新", async () => {
     const { updateWorkspaceDir, getWorkspaceDir } = await freshImport();
     updateWorkspaceDir("/tmp/ws1");

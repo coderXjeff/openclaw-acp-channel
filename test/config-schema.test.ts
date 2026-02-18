@@ -4,7 +4,13 @@ import { DEFAULT_SESSION_CONFIG } from "../src/types.js";
 
 type SchemaNode = {
   properties?: Record<string, SchemaNode>;
+  patternProperties?: Record<string, SchemaNode>;
+  allOf?: SchemaNode[];
+  oneOf?: SchemaNode[];
+  required?: string[];
+  then?: SchemaNode;
   default?: unknown;
+  minProperties?: number;
 };
 
 describe("acpConfigSchema defaults", () => {
@@ -31,5 +37,19 @@ describe("acpConfigSchema defaults", () => {
     const required = (acpConfigSchema as any).required as string[] | undefined;
     expect(required ?? []).not.toContain("agentName");
   });
-});
 
+  it("identities schema 已暴露且限制 key 格式", () => {
+    const identities = schema.properties?.identities as SchemaNode | undefined;
+    expect(identities).toBeDefined();
+    expect(identities?.minProperties).toBe(1);
+    expect(identities?.patternProperties?.["^[a-zA-Z0-9_-]+$"]).toBeDefined();
+  });
+
+  it("enabled=true 时要求 agentName 或 identities 至少一个", () => {
+    const allOf = (acpConfigSchema as SchemaNode).allOf ?? [];
+    expect(allOf.length).toBeGreaterThan(0);
+    const thenOneOf = allOf[0]?.then?.oneOf;
+    expect(thenOneOf?.some((x) => x.required?.includes("agentName"))).toBe(true);
+    expect(thenOneOf?.some((x) => x.required?.includes("identities"))).toBe(true);
+  });
+});

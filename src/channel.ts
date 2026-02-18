@@ -1,5 +1,5 @@
 import type { ChannelPlugin, ChannelConfigSchema } from "./plugin-types.js";
-import type { ResolvedAcpAccount, AcpChannelConfig, AcpIdentityEntry } from "./types.js";
+import type { ResolvedAcpAccount, AcpChannelConfig } from "./types.js";
 import { acpConfigSchema } from "./config-schema.js";
 import { acpMessageActions } from "./actions.js";
 import { acpGatewayAdapter } from "./gateway.js";
@@ -37,46 +37,57 @@ const acpConfigAdapter = {
     if (!acpConfig?.enabled) {
       return [];
     }
-    // 多身份模式
-    if (acpConfig.identities && Object.keys(acpConfig.identities).length > 0) {
-      return Object.keys(acpConfig.identities);
+
+    const identities = acpConfig.identities ?? {};
+    const identityIds = Object.keys(identities);
+    if (identityIds.length > 0) {
+      return identityIds;
     }
-    // 兼容单 AID 模式
-    if (!acpConfig.agentName) {
+
+    if (!acpConfig.agentName?.trim()) {
       return [];
     }
+
     return ["default"];
   },
 
   resolveAccount: (cfg: any, accountId?: string | null): ResolvedAcpAccount => {
     const acpConfig = cfg.channels?.acp as AcpChannelConfig | undefined;
-    const id = accountId ?? "default";
 
-    // 多身份模式：从 identities[accountId] 解析
-    if (acpConfig?.identities && id !== "default" && acpConfig.identities[id]) {
-      const entry: AcpIdentityEntry = acpConfig.identities[id];
-      const domain = entry.domain ?? acpConfig.domain ?? "agentcp.io";
+    const identities = acpConfig?.identities ?? {};
+    const identityIds = Object.keys(identities);
+    const normalizedAccountId = accountId && accountId.trim() ? accountId.trim() : undefined;
+    const fallbackIdentityId = identities.default ? "default" : identityIds[0];
+    const selectedIdentityId = normalizedAccountId ?? fallbackIdentityId;
+    const selectedIdentity = selectedIdentityId ? identities[selectedIdentityId] : undefined;
+
+    if (identityIds.length > 0 && normalizedAccountId && !selectedIdentity) {
+      throw new Error(`ACP account "${normalizedAccountId}" not found in channels.acp.identities`);
+    }
+
+    if (selectedIdentity) {
+      const domain = selectedIdentity.domain ?? acpConfig?.domain ?? "agentcp.io";
+      const agentName = selectedIdentity.agentName ?? "";
       return {
-        accountId: id,
-        identityId: id,
-        agentName: entry.agentName,
+        accountId: selectedIdentityId,
+        identityId: selectedIdentityId,
+        agentName,
         domain,
-        fullAid: `${entry.agentName}.${domain}`,
-        enabled: acpConfig.enabled ?? false,
-        ownerAid: entry.ownerAid ?? acpConfig.ownerAid ?? "",
-        allowFrom: entry.allowFrom ?? acpConfig.allowFrom ?? [],
-        seedPassword: entry.seedPassword ?? acpConfig.seedPassword ?? "",
-        workspaceDir: entry.workspaceDir ?? acpConfig.workspaceDir,
-        agentMdPath: entry.agentMdPath ?? acpConfig.agentMdPath,
+        fullAid: agentName ? `${agentName}.${domain}` : "",
+        enabled: acpConfig?.enabled ?? false,
+        ownerAid: selectedIdentity.ownerAid ?? acpConfig?.ownerAid ?? "",
+        allowFrom: selectedIdentity.allowFrom ?? acpConfig?.allowFrom ?? [],
+        seedPassword: selectedIdentity.seedPassword ?? acpConfig?.seedPassword ?? "",
+        workspaceDir: selectedIdentity.workspaceDir ?? acpConfig?.workspaceDir,
+        agentMdPath: selectedIdentity.agentMdPath ?? acpConfig?.agentMdPath,
       };
     }
 
-    // 单 AID 模式：从顶层字段解析
     const domain = acpConfig?.domain ?? "agentcp.io";
     const agentName = acpConfig?.agentName ?? "";
     return {
-      accountId: id,
-      identityId: id,
+      accountId: "default",
+      identityId: "default",
       agentName,
       domain,
       fullAid: agentName ? `${agentName}.${domain}` : "",
@@ -89,7 +100,16 @@ const acpConfigAdapter = {
     };
   },
 
-  defaultAccountId: (_cfg: any): string => "default",
+  defaultAccountId: (cfg: any): string => {
+    const acpConfig = cfg.channels?.acp as AcpChannelConfig | undefined;
+    const identities = acpConfig?.identities ?? {};
+    const identityIds = Object.keys(identities);
+    if (identityIds.length > 0) {
+      if (identities.default) return "default";
+      return identityIds[0];
+    }
+    return "default";
+  },
 
   isEnabled: (account: ResolvedAcpAccount, _cfg: any): boolean => {
     return account.enabled && !!account.agentName;
@@ -109,6 +129,11 @@ const acpConfigAdapter = {
 
   resolveAllowFrom: (params: { cfg: any; accountId?: string | null }): string[] | undefined => {
     const acpConfig = params.cfg.channels?.acp as AcpChannelConfig | undefined;
+    const accountId = params.accountId?.trim();
+    if (accountId && acpConfig?.identities?.[accountId]) {
+      // 与 resolveAccount 保持一致：identity 级优先，fallback 到 top-level
+      return acpConfig.identities[accountId].allowFrom ?? acpConfig?.allowFrom;
+    }
     return acpConfig?.allowFrom;
   },
 };
@@ -146,11 +171,6 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
       help: "Path to agent.md file (auto-upload on login, e.g., ~/.acp-storage/AIDs/my-agent.agentcp.io/public/agent.md)",
       placeholder: "~/.acp-storage/AIDs/{aid}/public/agent.md",
     },
-    identities: {
-      label: "Identities",
-      help: "Multi-identity bindings. Each key is an IdentityProfile.id, value contains agentName, seedPassword, etc.",
-      advanced: true,
-    },
   },
 };
 
@@ -186,7 +206,7 @@ const acpOutboundAdapter = {
         to: targetAid,
         sessionId,
         content: ctx.text,
-        identityId: ctx.accountId ?? undefined,
+        accountId: ctx.accountId,
       });
 
       return {

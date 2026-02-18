@@ -4,6 +4,33 @@ import type { Contact } from "./types.js";
 import { calculateCreditScore } from "./credit.js";
 
 const STORAGE_PATH = path.join(process.env.HOME || "~", ".acp-storage", "contacts.json");
+const STORAGE_DIR = path.dirname(STORAGE_PATH);
+
+function normalizeIdentityId(identityId?: string): string {
+  const normalized = identityId?.trim();
+  return normalized && normalized.length > 0 ? normalized : "default";
+}
+
+function getStoragePathForIdentity(identityId?: string): string {
+  const normalized = normalizeIdentityId(identityId);
+  if (normalized === "default") {
+    return STORAGE_PATH;
+  }
+  const newPath = path.join(STORAGE_DIR, `contacts-${normalized}.json`);
+  // 迁移：旧路径 ~/.acp-storage/identities/{id}/contacts.json -> 新路径
+  if (!fs.existsSync(newPath)) {
+    const oldPath = path.join(STORAGE_DIR, "identities", normalized, "contacts.json");
+    if (fs.existsSync(oldPath)) {
+      try {
+        fs.copyFileSync(oldPath, newPath);
+        console.log(`[ACP] Migrated contacts for identity "${normalized}": ${oldPath} -> ${newPath}`);
+      } catch (err) {
+        console.error(`[ACP] Failed to migrate contacts for identity "${normalized}":`, err);
+      }
+    }
+  }
+  return newPath;
+}
 
 export class ContactManager {
   private contacts: Map<string, Contact> = new Map();
@@ -211,16 +238,16 @@ export class ContactManager {
   }
 }
 
-// 按 identityId 分实例
+// 多身份缓存：每个 identityId 一个实例
 const instances = new Map<string, ContactManager>();
 
 export function getContactManager(identityId?: string): ContactManager {
-  const key = identityId ?? "default";
-  if (!instances.has(key)) {
-    const filePath = identityId && identityId !== "default"
-      ? path.join(process.env.HOME || "~", ".acp-storage", "identities", identityId, "contacts.json")
-      : STORAGE_PATH;  // 兼容旧路径
-    instances.set(key, new ContactManager(filePath));
+  const normalized = normalizeIdentityId(identityId);
+  const existing = instances.get(normalized);
+  if (existing) {
+    return existing;
   }
-  return instances.get(key)!;
+  const manager = new ContactManager(getStoragePathForIdentity(normalized));
+  instances.set(normalized, manager);
+  return manager;
 }
