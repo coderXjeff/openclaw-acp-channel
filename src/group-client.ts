@@ -8,9 +8,13 @@
  */
 import { LocalCursorStore } from "acp-ts";
 import type { ACPGroupEventHandler } from "acp-ts";
-import type { IdentityAcpState, GroupMessageBuffer, GroupMessageItem } from "./types.js";
-import { DEFAULT_SESSION_CONFIG } from "./types.js";
+import type { IdentityAcpState, GroupMessageBuffer, GroupMessageItem, GroupSocialConfig, GroupVitalityState, MentionInfo } from "./types.js";
+import { DEFAULT_SESSION_CONFIG, DEFAULT_GROUP_SOCIAL_CONFIG } from "./types.js";
 import type { AcpIdentityRouter } from "./identity-router.js";
+import { loadAgentMdSources } from "./agent-md-sources.js";
+import { parseIdentity } from "./agent-md-builder.js";
+import { getWorkspaceDir } from "./workspace.js";
+import { buildMentionKeywords, checkMention, pruneVitalityWindow, computeVitality, determineReplyType } from "./group-social.js";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -33,13 +37,23 @@ function getOrCreateBuffer(state: IdentityAcpState, groupId: string): GroupMessa
       groupId,
       incomingMessages: [],
       bufferGateTimer: null,
+      incomingBatchCount: 0,
       pendingQueue: [],
+      pendingBatchCount: 0,
       cooldownTimer: null,
       dispatching: false,
       lastDispatchAt: 0,
       lastPulledMsgId: 0,
       pulling: false,
       seenMsgIds: new Set(),
+      // P1 群活力 & 提及
+      vitalityWindow: { events: [], windowMs: 300_000 },
+      mentionKeywords: [],
+      selfSendEvents: [],
+      lastSelfSpeakAt: 0,
+      hasPendingMention: false,
+      lastNReplyHashes: [],
+      mentionDelayTimer: null,
     };
     state.groupMessageBuffers.set(groupId, buffer);
   }
@@ -73,6 +87,35 @@ function getBufferGateMs(router: AcpIdentityRouter): number {
   return (typeof val === "number" && val >= 500) ? val : DEFAULT_SESSION_CONFIG.groupBufferGateMs;
 }
 
+function getGroupSocialConfig(router: AcpIdentityRouter): Required<GroupSocialConfig> {
+  const acpConfig = router.getAcpConfig();
+  const userCfg = acpConfig?.groupSocial ?? {};
+  return { ...DEFAULT_GROUP_SOCIAL_CONFIG, ...userCfg };
+}
+
+/**
+ * 读取 identity 的展示名（例如 IDENTITY.md 的 Name），作为自动 mention 别名。
+ * 失败时返回空数组，保持兼容。
+ */
+function loadIdentityDisplayAliases(state: IdentityAcpState, router: AcpIdentityRouter): string[] {
+  const aliases: string[] = [];
+  try {
+    const acpConfig = router.getAcpConfig();
+    const wsDir = state.account.workspaceDir || acpConfig?.workspaceDir || getWorkspaceDir();
+    if (!wsDir) return aliases;
+    const sources = loadAgentMdSources(wsDir, state.identityId);
+    const identityMd = sources.identity;
+    if (!identityMd) return aliases;
+    const parsed = parseIdentity(identityMd);
+    if (parsed.name && parsed.name.trim().length >= 2) {
+      aliases.push(parsed.name.trim());
+    }
+  } catch {
+    // best-effort alias loading; ignore failures
+  }
+  return aliases;
+}
+
 // ===== Buffer Gate =====
 
 function feedBufferGate(
@@ -83,6 +126,10 @@ function feedBufferGate(
 ): void {
   const identityId = state.identityId;
   const buffer = getOrCreateBuffer(state, groupId);
+  const socialCfg = getGroupSocialConfig(router);
+  if (socialCfg.enabled) {
+    buffer.vitalityWindow.windowMs = socialCfg.vitalityWindowMs;
+  }
 
   let added = 0;
   for (const msg of messages) {
@@ -90,6 +137,21 @@ function feedBufferGate(
       debugLog(`[${identityId}] feedBufferGate DEDUP: skipping msg_id=${msg.msg_id} for group=${groupId}`);
       continue;
     }
+
+    // P1: 滑窗事件追加 + 提及检测
+    if (socialCfg.enabled) {
+      buffer.vitalityWindow.events.push({ ts: msg.timestamp, sender: msg.sender });
+
+      // 补填 mentionKeywords（若为空，从 identity 级缓存复制）
+      if (buffer.mentionKeywords.length === 0 && (state as any)._mentionKeywords?.length > 0) {
+        buffer.mentionKeywords = [...(state as any)._mentionKeywords];
+      }
+
+      if (checkMention(msg.content, buffer.mentionKeywords)) {
+        msg.isMention = true;
+      }
+    }
+
     buffer.incomingMessages.push(msg);
     added++;
   }
@@ -97,8 +159,58 @@ function feedBufferGate(
   debugLog(`[${identityId}] feedBufferGate: group=${groupId}, received=${messages.length}, added=${added}, incomingSize=${buffer.incomingMessages.length}`);
 
   if (added === 0) return;
+  buffer.incomingBatchCount += 1;
 
-  // 重置 bufferGateTimer
+  // P1: 清理过期滑窗事件
+  if (socialCfg.enabled) {
+    pruneVitalityWindow(buffer.vitalityWindow, Date.now());
+  }
+
+  // P1: 提及加速路径
+  if (socialCfg.enabled) {
+    const hasMention = buffer.incomingMessages.some(m => m.isMention);
+    if (hasMention) {
+      debugLog(`[${identityId}] feedBufferGate: MENTION detected in group=${groupId}`);
+
+      // 取消正常 bufferGateTimer
+      if (buffer.bufferGateTimer) {
+        clearTimeout(buffer.bufferGateTimer);
+        buffer.bufferGateTimer = null;
+      }
+      if (buffer.cooldownTimer) {
+        clearTimeout(buffer.cooldownTimer);
+        buffer.cooldownTimer = null;
+      }
+
+      // 如果正在 dispatch，标记等待
+      if (buffer.dispatching) {
+        buffer.hasPendingMention = true;
+        debugLog(`[${identityId}] feedBufferGate: dispatching=true, set hasPendingMention=true`);
+        return;
+      }
+
+      // 检查 mentionMinIntervalMs 节流
+      const elapsed = Date.now() - buffer.lastDispatchAt;
+      const minInterval = socialCfg.mentionMinIntervalMs;
+      if (buffer.lastDispatchAt > 0 && elapsed < minInterval) {
+        const remaining = minInterval - elapsed;
+        debugLog(`[${identityId}] feedBufferGate: mention throttle, remaining=${remaining}ms`);
+        if (!buffer.mentionDelayTimer) {
+          buffer.mentionDelayTimer = setTimeout(() => {
+            buffer.mentionDelayTimer = null;
+            mergeAndDispatch(state, router, groupId, buffer);
+          }, remaining);
+        }
+        return;
+      }
+
+      // 立即合并提交
+      mergeAndDispatch(state, router, groupId, buffer);
+      return;
+    }
+  }
+
+  // 正常路径：重置 bufferGateTimer
   if (buffer.bufferGateTimer) {
     clearTimeout(buffer.bufferGateTimer);
   }
@@ -108,6 +220,48 @@ function feedBufferGate(
     flushBufferGateToQueue(state, router, groupId);
   }, gateMs);
   debugLog(`[${identityId}] feedBufferGate: bufferGateTimer reset to ${gateMs}ms for group=${groupId}`);
+}
+
+/**
+ * P1: 合并所有未处理消息并立即 dispatch（提及加速路径）
+ */
+function mergeAndDispatch(
+  state: IdentityAcpState,
+  router: AcpIdentityRouter,
+  groupId: string,
+  buffer: GroupMessageBuffer
+): void {
+  const identityId = state.identityId;
+
+  if (buffer.dispatching) {
+    buffer.hasPendingMention = true;
+    debugLog(`[${identityId}] mergeAndDispatch SKIP: dispatching=true, set hasPendingMention=true`);
+    return;
+  }
+
+  // 取消所有定时器
+  if (buffer.bufferGateTimer) { clearTimeout(buffer.bufferGateTimer); buffer.bufferGateTimer = null; }
+  if (buffer.cooldownTimer) { clearTimeout(buffer.cooldownTimer); buffer.cooldownTimer = null; }
+  if (buffer.mentionDelayTimer) { clearTimeout(buffer.mentionDelayTimer); buffer.mentionDelayTimer = null; }
+
+  // 合并 incomingMessages + pendingQueue
+  const merged = [...buffer.incomingMessages.splice(0), ...buffer.pendingQueue.splice(0)];
+  merged.sort((a, b) => a.timestamp - b.timestamp);
+  let batchesMerged = buffer.incomingBatchCount + buffer.pendingBatchCount;
+  if (batchesMerged <= 0 && merged.length > 0) {
+    batchesMerged = 1;
+  }
+  buffer.incomingBatchCount = 0;
+  buffer.pendingBatchCount = 0;
+
+  debugLog(`[${identityId}] mergeAndDispatch: group=${groupId}, merged=${merged.length} messages, batches=${batchesMerged}`);
+
+  if (merged.length === 0) return;
+
+  void dispatchToAgent(state, router, groupId, merged, buffer, {
+    triggerType: "mention",
+    batchesMerged,
+  });
 }
 
 function flushBufferGateToQueue(
@@ -123,7 +277,12 @@ function flushBufferGateToQueue(
   }
 
   const flushed = buffer.incomingMessages.splice(0);
+  const incomingBatchCount = buffer.incomingBatchCount;
+  buffer.incomingBatchCount = 0;
   buffer.pendingQueue.push(...flushed);
+  if (flushed.length > 0) {
+    buffer.pendingBatchCount += Math.max(1, incomingBatchCount);
+  }
   debugLog(`[${identityId}] flushBufferGateToQueue: group=${groupId}, flushed=${flushed.length} to pendingQueue, queueSize=${buffer.pendingQueue.length}`);
 
   tryDispatch(state, router, groupId);
@@ -147,6 +306,10 @@ function tryDispatch(
     debugLog(`[${identityId}] tryDispatch SKIP: group=${groupId}, already dispatching (messages stay in pendingQueue)`);
     return;
   }
+  if (buffer.mentionDelayTimer) {
+    debugLog(`[${identityId}] tryDispatch SKIP: group=${groupId}, mentionDelayTimer pending`);
+    return;
+  }
 
   const cooldownMs = getDispatchCooldownMs(router);
   const elapsed = Date.now() - buffer.lastDispatchAt;
@@ -165,8 +328,13 @@ function tryDispatch(
 
   // 取出 pendingQueue 全部消息
   const messages = buffer.pendingQueue.splice(0);
+  const batchesMerged = buffer.pendingBatchCount > 0 ? buffer.pendingBatchCount : 1;
+  buffer.pendingBatchCount = 0;
   debugLog(`[${identityId}] tryDispatch GO: group=${groupId}, dispatching ${messages.length} messages`);
-  void dispatchToAgent(state, router, groupId, messages, buffer);
+  void dispatchToAgent(state, router, groupId, messages, buffer, {
+    triggerType: "normal",
+    batchesMerged,
+  });
 }
 
 async function dispatchToAgent(
@@ -174,7 +342,11 @@ async function dispatchToAgent(
   router: AcpIdentityRouter,
   groupId: string,
   messages: GroupMessageItem[],
-  buffer: GroupMessageBuffer
+  buffer: GroupMessageBuffer,
+  dispatchMeta: {
+    triggerType: "normal" | "mention";
+    batchesMerged: number;
+  } = { triggerType: "normal", batchesMerged: 1 }
 ): Promise<void> {
   const identityId = state.identityId;
   buffer.dispatching = true;
@@ -190,8 +362,44 @@ async function dispatchToAgent(
       content: m.content,
       timestamp: m.timestamp,
       msg_id: m.msg_id > 0 ? m.msg_id : undefined,
+      isMention: m.isMention,
     }));
-    await handleGroupMessagesForIdentity(state, groupId, formatted);
+
+    const socialCfg = getGroupSocialConfig(router);
+
+    if (socialCfg.enabled) {
+      // P1: 计算活力状态
+      const vitality = computeVitality(buffer.vitalityWindow, buffer.selfSendEvents);
+      debugLog(`[${identityId}] computeVitality: state=${vitality.state}, msgs=${vitality.messagesIn5m}, speakers=${vitality.uniqueSpeakersIn5m}, myMsgs=${vitality.myMessagesIn5m}`);
+
+      // P1: 构建 mentionInfo
+      const mentionCount = messages.filter(m => m.isMention).length;
+      const mentionInfo: MentionInfo = {
+        mentioned: mentionCount > 0,
+        mentionCount,
+        batchesMerged: Math.max(1, dispatchMeta.batchesMerged),
+        triggerType: dispatchMeta.triggerType,
+      };
+
+      // P1: 决定回复类型
+      const replyType = determineReplyType(vitality, mentionInfo.mentioned);
+      debugLog(`[${identityId}] replyType=${replyType}, mentioned=${mentionInfo.mentioned}`);
+
+      await handleGroupMessagesForIdentity(state, groupId, formatted, {
+        vitality,
+        mentionInfo,
+        replyType,
+        groupSocialConfig: socialCfg,
+        lastSelfSpeakAt: buffer.lastSelfSpeakAt,
+        onSelfSend: (ts: number) => {
+          buffer.selfSendEvents.push({ ts });
+          buffer.lastSelfSpeakAt = ts;
+        },
+      });
+    } else {
+      await handleGroupMessagesForIdentity(state, groupId, formatted);
+    }
+
     debugLog(`[${identityId}] dispatchToAgent DONE: group=${groupId}`);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -203,8 +411,38 @@ async function dispatchToAgent(
     buffer.lastDispatchAt = Date.now();
     debugLog(`[${identityId}] dispatchToAgent FINALLY: group=${groupId}, dispatching=false, lastDispatchAt=${buffer.lastDispatchAt}`);
 
-    // 如果 pendingQueue 中又积累了新消息，启动冷却定时器
-    if (buffer.pendingQueue.length > 0 && !buffer.cooldownTimer) {
+    // P1 修复：flush dispatch 期间积压的 incomingMessages
+    if (buffer.incomingMessages.length > 0) {
+      if (buffer.bufferGateTimer) { clearTimeout(buffer.bufferGateTimer); buffer.bufferGateTimer = null; }
+      buffer.pendingQueue.push(...buffer.incomingMessages.splice(0));
+      buffer.pendingBatchCount += Math.max(1, buffer.incomingBatchCount);
+      buffer.incomingBatchCount = 0;
+    }
+
+    // P1: 若有积压的提及消息，走加速路径
+    const socialCfg = getGroupSocialConfig(router);
+    if (socialCfg.enabled && buffer.hasPendingMention && buffer.pendingQueue.length > 0) {
+      buffer.hasPendingMention = false;
+      if (buffer.cooldownTimer) {
+        clearTimeout(buffer.cooldownTimer);
+        buffer.cooldownTimer = null;
+      }
+      const elapsed = Date.now() - buffer.lastDispatchAt;
+      const minInterval = socialCfg.mentionMinIntervalMs;
+      if (elapsed >= minInterval) {
+        mergeAndDispatch(state, router, groupId, buffer);
+      } else {
+        const remaining = minInterval - elapsed;
+        if (!buffer.mentionDelayTimer) {
+          buffer.mentionDelayTimer = setTimeout(() => {
+            buffer.mentionDelayTimer = null;
+            mergeAndDispatch(state, router, groupId, buffer);
+          }, remaining);
+        }
+      }
+    }
+    // 否则走原有冷却路径
+    else if (buffer.pendingQueue.length > 0 && !buffer.cooldownTimer && !buffer.mentionDelayTimer) {
       const cooldownMs = getDispatchCooldownMs(router);
       debugLog(`[${identityId}] dispatchToAgent: pendingQueue has ${buffer.pendingQueue.length} msgs, starting cooldown ${cooldownMs}ms`);
       buffer.cooldownTimer = setTimeout(() => {
@@ -407,6 +645,15 @@ export async function initGroupClientForIdentity(
   state.groupSessionId = sessionId;
   state.groupTargetAid = groupTargetAid;
 
+  // P1: 构建提及关键词
+  const acpConfig = router.getAcpConfig();
+  if (acpConfig?.groupSocial?.enabled) {
+    const extraAliases = loadIdentityDisplayAliases(state, router);
+    const keywords = buildMentionKeywords(state.account, acpConfig, extraAliases);
+    (state as any)._mentionKeywords = keywords;
+    debugLog(`[${identityId}] P1 mentionKeywords: [${keywords.join(', ')}]`);
+  }
+
   // 注册上线 + 心跳保活
   void (async () => {
     try {
@@ -514,6 +761,10 @@ export async function closeGroupClientForIdentity(
     if (buffer.cooldownTimer) {
       clearTimeout(buffer.cooldownTimer);
       buffer.cooldownTimer = null;
+    }
+    if (buffer.mentionDelayTimer) {
+      clearTimeout(buffer.mentionDelayTimer);
+      buffer.mentionDelayTimer = null;
     }
   }
   state.groupMessageBuffers.clear();

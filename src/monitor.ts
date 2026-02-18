@@ -1,5 +1,6 @@
-import type { AcpChannelConfig, ResolvedAcpAccount, AcpSessionState, AcpSessionConfig, IdentityAcpState } from "./types.js";
+import type { AcpChannelConfig, ResolvedAcpAccount, AcpSessionState, AcpSessionConfig, IdentityAcpState, GroupVitalityState, MentionInfo, GroupSocialConfig } from "./types.js";
 import { DEFAULT_SESSION_CONFIG } from "./types.js";
+import { buildGroupSituationPrompt, postProcessReply } from "./group-social.js";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import { AcpClient, type ConnectionStatus } from "./acp-client.js";
 import { getAcpRuntime, hasAcpRuntime } from "./runtime.js";
@@ -535,7 +536,15 @@ export async function handleInboundMessageForIdentity(
 export async function handleGroupMessagesForIdentity(
   identityState: IdentityAcpState,
   groupId: string,
-  messages: { sender: string; content: string; timestamp: number; msg_id?: number }[]
+  messages: { sender: string; content: string; timestamp: number; msg_id?: number; isMention?: boolean }[],
+  p1Options?: {
+    vitality?: GroupVitalityState;
+    mentionInfo?: MentionInfo;
+    replyType?: string;
+    groupSocialConfig?: GroupSocialConfig;
+    lastSelfSpeakAt?: number;
+    onSelfSend?: (ts: number) => void;
+  }
 ): Promise<void> {
   const identityId = identityState.identityId;
   const account = identityState.account;
@@ -591,7 +600,8 @@ export async function handleGroupMessagesForIdentity(
   const formattedMessages = filtered.map(m => {
     const time = new Date(m.timestamp).toLocaleTimeString("zh-CN", { hour12: false });
     const msgIdPrefix = m.msg_id && m.msg_id > 0 ? `[msg_id:${m.msg_id}] ` : "";
-    return `${msgIdPrefix}[${time}] ${m.sender}: ${m.content}`;
+    const mentionSuffix = m.isMention ? " [mentioned]" : "";
+    return `${msgIdPrefix}[${time}] ${m.sender}: ${m.content}${mentionSuffix}`;
   }).join("\n");
 
   const body =
@@ -620,6 +630,24 @@ export async function handleGroupMessagesForIdentity(
     debugLog(`[${identityId}] storePath=${storePath}`);
 
     const acpSystemPrompt = buildAcpSystemPrompt(selfAid, `group:${groupId}`, false);
+
+    // P1: 拼接群态势 prompt
+    let fullSystemPrompt = acpSystemPrompt;
+    if (p1Options?.vitality && p1Options?.mentionInfo) {
+      const lastSelfSpeakAt = p1Options.lastSelfSpeakAt ?? 0;
+      const lastSpeakAgoSec = lastSelfSpeakAt > 0
+        ? Math.max(0, Math.floor((p1Options.vitality.updatedAt - lastSelfSpeakAt) / 1000))
+        : -1;
+      const situationPrompt = buildGroupSituationPrompt(
+        p1Options.vitality,
+        p1Options.mentionInfo,
+        p1Options.replyType ?? "normal",
+        p1Options.vitality.myMessagesIn5m,
+        lastSpeakAgoSec,
+      );
+      fullSystemPrompt = acpSystemPrompt + "\n\n" + situationPrompt;
+      debugLog(`[${identityId}] P1 situationPrompt injected, replyType=${p1Options.replyType}`);
+    }
 
     const messageWithContext =
       `[ACP System: Group Chat Message]\n` +
@@ -650,7 +678,7 @@ export async function handleGroupMessagesForIdentity(
       OriginatingTo: `acp:${selfAid}`,
       CommandAuthorized: false,
       ConversationLabel: `group:${groupId}`,
-      GroupSystemPrompt: acpSystemPrompt,
+      GroupSystemPrompt: fullSystemPrompt,
     });
     debugLog(`[${identityId}] finalizeInboundContext OK`);
 
@@ -669,8 +697,15 @@ export async function handleGroupMessagesForIdentity(
     const { dispatcher, replyOptions, markDispatchIdle } = runtime.channel.reply.createReplyDispatcherWithTyping({
       deliver: async (payload) => {
         deliverCalled = true;
-        const text = payload.text ?? "";
+        let text = payload.text ?? "";
         debugLog(`[${identityId}] deliver callback: text length=${text.length}, empty=${!text.trim()}, preview="${text.substring(0, 120)}"`);
+
+        // P1: 回复裁剪
+        if (p1Options?.replyType && p1Options?.groupSocialConfig && text.trim()) {
+          text = postProcessReply(text, p1Options.replyType, p1Options.groupSocialConfig.maxCharsPerMessage ?? 500);
+          debugLog(`[${identityId}] P1 postProcessReply: replyType=${p1Options.replyType}, after trim len=${text.length}`);
+        }
+
         if (!text.trim()) {
           debugLog(`[${identityId}] deliver: empty text, skipping sendGroupMessage`);
           return;
@@ -681,6 +716,9 @@ export async function handleGroupMessagesForIdentity(
           await groupOps.sendGroupMessage(groupTargetAid, groupId, text);
           debugLog(`[${identityId}] sendGroupMessage OK: group=${groupId}, text="${text.substring(0, 120)}"`);
           console.log(`[ACP] [${identityId}] Sent group reply to ${groupId} (${text.length} chars)`);
+
+          // P1: 记录自己发言
+          p1Options?.onSelfSend?.(Date.now());
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           const errStack = err instanceof Error ? err.stack : undefined;
@@ -694,7 +732,7 @@ export async function handleGroupMessagesForIdentity(
       },
     });
 
-    debugLog(`[${identityId}] Calling dispatchReplyFromConfig... cfg.reply=${JSON.stringify(cfg.reply ?? null).substring(0, 200)}, cfg.model=${cfg.model ?? "N/A"}`);
+    debugLog(`[${identityId}] Calling dispatchReplyFromConfig...`);
     await runtime.channel.reply.dispatchReplyFromConfig({
       ctx, cfg, dispatcher,
       replyOptions: { ...replyOptions, disableBlockStreaming: true },

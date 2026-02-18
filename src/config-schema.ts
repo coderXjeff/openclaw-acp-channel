@@ -172,7 +172,23 @@ export const acpConfigSchema: JSONSchema = {
             type: "string",
             description: "Path to agent.md file for this identity",
           },
+          mentionAliases: {
+            type: "array",
+            items: { type: "string" },
+            description: "Mention aliases for this identity",
+          },
         },
+      },
+    },
+    groupSocial: {
+      type: "object",
+      description: "Group social behavior (P1: vitality, mention, reply constraints)",
+      properties: {
+        enabled: { type: "boolean", default: false },
+        mentionAliases: { type: "array", items: { type: "string" } },
+        mentionMinIntervalMs: { type: "number", default: 3000, minimum: 1000 },
+        maxCharsPerMessage: { type: "number", default: 500, minimum: 50 },
+        vitalityWindowMs: { type: "number", default: 300000, minimum: 60000 },
       },
     },
   },

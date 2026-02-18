@@ -1,3 +1,42 @@
+// P1 群活力状态机与上下文注入
+export interface GroupSocialConfig {
+  enabled?: boolean;                // 总开关，默认 false
+  mentionAliases?: string[];        // 全局提及别名
+  mentionMinIntervalMs?: number;    // 提及最小节流 ms，默认 3000
+  maxCharsPerMessage?: number;      // 回复最大字符数，默认 500
+  vitalityWindowMs?: number;        // 活力滑窗 ms，默认 300000
+}
+
+export const DEFAULT_GROUP_SOCIAL_CONFIG: Required<GroupSocialConfig> = {
+  enabled: false,
+  mentionAliases: [],
+  mentionMinIntervalMs: 3000,
+  maxCharsPerMessage: 500,
+  vitalityWindowMs: 300_000,
+};
+
+export type VitalityState = "DORMANT" | "COOLING" | "ACTIVE" | "HEATED";
+
+export interface VitalityWindow {
+  events: { ts: number; sender: string }[];
+  windowMs: number;
+}
+
+export interface GroupVitalityState {
+  state: VitalityState;
+  messagesIn5m: number;
+  uniqueSpeakersIn5m: number;
+  myMessagesIn5m: number;
+  updatedAt: number;
+}
+
+export interface MentionInfo {
+  mentioned: boolean;
+  mentionCount: number;
+  batchesMerged: number;
+  triggerType: "normal" | "mention";
+}
+
 // ACP Channel 配置类型 (acp-ts 版本)
 export interface AcpChannelConfig {
   enabled: boolean;
@@ -17,6 +56,8 @@ export interface AcpChannelConfig {
   session?: AcpSessionConfig;
   // 多身份配置
   identities?: Record<string, AcpIdentityEntry>;
+  // P1 群社交行为配置
+  groupSocial?: GroupSocialConfig;
 }
 
 // 身份的 ACP 元数据（存在 IdentityProfile.metadata 中）
@@ -39,6 +80,7 @@ export interface AcpIdentityEntry {
   allowFrom?: string[];
   workspaceDir?: string;
   agentMdPath?: string;
+  mentionAliases?: string[];  // P1: 提及别名列表
 }
 
 // 会话终止控制配置
@@ -147,6 +189,7 @@ export interface GroupMessageItem {
   sender: string;
   content: string;
   timestamp: number;
+  isMention?: boolean;  // P1: 是否命中提及检测
 }
 
 /** 群组消息缓冲区 */
@@ -154,13 +197,23 @@ export interface GroupMessageBuffer {
   groupId: string;
   incomingMessages: GroupMessageItem[];                    // Buffer Gate 聚合中的消息
   bufferGateTimer: ReturnType<typeof setTimeout> | null;   // Buffer Gate 聚合定时器
+  incomingBatchCount: number;                              // incomingMessages 中累计的批次数
   pendingQueue: GroupMessageItem[];                        // Dispatch Gate 待处理队列
+  pendingBatchCount: number;                               // pendingQueue 中累计的批次数
   cooldownTimer: ReturnType<typeof setTimeout> | null;     // Dispatch Gate 冷却定时器
   dispatching: boolean;
   lastDispatchAt: number;
   lastPulledMsgId: number;  // 上次 pullMessages 拉到的最大 msg_id
   pulling: boolean;         // 防止并发 pull
   seenMsgIds: Set<number>;  // msg_id 去重集合
+  // P1 群活力 & 提及
+  vitalityWindow: VitalityWindow;
+  mentionKeywords: string[];
+  selfSendEvents: { ts: number }[];
+  lastSelfSpeakAt: number;
+  hasPendingMention: boolean;
+  lastNReplyHashes: string[];
+  mentionDelayTimer: ReturnType<typeof setTimeout> | null;
 }
 
 /** 联系人 */
