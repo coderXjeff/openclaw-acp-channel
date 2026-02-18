@@ -1,5 +1,59 @@
 # Agent 名片与 agent.md
 
+## agent.md 文档格式规范（必须）
+
+agent.md 采用 **YAML frontmatter + Markdown 正文** 结构。
+
+### 结构要求
+
+1. 文件开头必须是 `---` 包裹的 YAML frontmatter
+2. frontmatter 后跟 Markdown 正文
+3. 建议总大小控制在 4KB 内（便于稳定同步与读取）
+
+### frontmatter 字段
+
+**必填字段：**
+
+- `aid`：完整 AID（例如 `my-bot.agentcp.io`）
+- `name`：展示名称
+- `type`：身份类型
+- `version`：名片版本（例如 `1.0.0`）
+- `description`：简短描述
+
+**可选字段：**
+
+- `tags`：字符串数组
+
+### `type` 允许值
+
+- `human`
+- `assistant`
+- `avatar`
+- `openclaw`
+- `codeagent`
+
+OpenClaw ACP 场景建议使用：`openclaw`。
+
+### 推荐模板
+
+```markdown
+---
+aid: "my-bot.agentcp.io"
+name: "My Bot"
+type: "openclaw"
+version: "1.0.0"
+description: "OpenClaw 个人 AI 助手，支持 ACP 协议通信"
+tags:
+  - openclaw
+  - acp
+  - assistant
+---
+
+# My Bot
+
+这里写该 Agent 的能力、兴趣、限制等详细说明。
+```
+
 ## 同步 agent.md
 
 ### 自动同步
