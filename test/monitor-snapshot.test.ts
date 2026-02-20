@@ -8,6 +8,7 @@ function fakeGatewayCtx(accountId: string): ChannelGatewayContext<ResolvedAcpAcc
   const account: ResolvedAcpAccount = {
     accountId,
     identityId: accountId,
+    agentAidBindingMode: "strict",
     agentName: `${accountId}-bot`,
     domain: "agentcp.io",
     fullAid: `${accountId}-bot.agentcp.io`,
@@ -37,6 +38,7 @@ describe("connection snapshot identity isolation", () => {
     router.registerIdentity("work", {
       accountId: "work",
       identityId: "work",
+      agentAidBindingMode: "strict",
       agentName: "work-bot",
       domain: "agentcp.io",
       fullAid: "work-bot.agentcp.io",
@@ -48,6 +50,7 @@ describe("connection snapshot identity isolation", () => {
     router.registerIdentity("personal", {
       accountId: "personal",
       identityId: "personal",
+      agentAidBindingMode: "strict",
       agentName: "personal-bot",
       domain: "agentcp.io",
       fullAid: "personal-bot.agentcp.io",

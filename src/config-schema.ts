@@ -88,6 +88,12 @@ export const acpConfigSchema: JSONSchema = {
       default: false,
       description: "Enable ACP channel",
     },
+    agentAidBindingMode: {
+      type: "string",
+      default: "strict",
+      description: "Binding policy: strict (1 agent <-> 1 ACP account) or flex",
+      pattern: "^(strict|flex)$",
+    },
     agentName: {
       type: "string",
       description: "Agent name (without domain, e.g., 'my-agent'). Required when channel is enabled",
@@ -218,6 +224,7 @@ export const acpConfigSchema: JSONSchema = {
         mentionMinIntervalMs: { type: "number", default: 3000, minimum: 1000 },
         maxCharsPerMessage: { type: "number", default: 500, minimum: 50 },
         vitalityWindowMs: { type: "number", default: 300000, minimum: 60000 },
+        maxJoinedGroups: { type: "number", default: 10, minimum: 1, description: "Maximum number of groups the agent can join simultaneously" },
       },
     },
   },

@@ -56,6 +56,7 @@ const acpConfigAdapter = {
 
     const identities = acpConfig?.identities ?? {};
     const identityIds = Object.keys(identities);
+    const bindingMode = acpConfig?.agentAidBindingMode ?? "strict";
     const normalizedAccountId = accountId && accountId.trim() ? accountId.trim() : undefined;
     const fallbackIdentityId = identities.default ? "default" : identityIds[0];
     const selectedIdentityId = normalizedAccountId ?? fallbackIdentityId;
@@ -71,6 +72,7 @@ const acpConfigAdapter = {
       return {
         accountId: selectedIdentityId,
         identityId: selectedIdentityId,
+        agentAidBindingMode: bindingMode,
         agentName,
         domain,
         fullAid: agentName ? `${agentName}.${domain}` : "",
@@ -83,11 +85,16 @@ const acpConfigAdapter = {
       };
     }
 
+    if (identityIds.length > 0 && !selectedIdentity) {
+      throw new Error("ACP identities is configured but empty/unresolvable");
+    }
+
     const domain = acpConfig?.domain ?? "agentcp.io";
     const agentName = acpConfig?.agentName ?? "";
     return {
       accountId: "default",
       identityId: "default",
+      agentAidBindingMode: bindingMode,
       agentName,
       domain,
       fullAid: agentName ? `${agentName}.${domain}` : "",
@@ -170,6 +177,11 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
       label: "Agent.md Path",
       help: "Path to agent.md file (auto-upload on login, e.g., ~/.acp-storage/AIDs/my-agent.agentcp.io/public/agent.md)",
       placeholder: "~/.acp-storage/AIDs/{aid}/public/agent.md",
+    },
+    agentAidBindingMode: {
+      label: "Agent-AID Binding Mode",
+      help: "strict: enforce 1 agent <-> 1 ACP account; flex: allow advanced mappings",
+      advanced: true,
     },
   },
 };

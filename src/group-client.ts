@@ -8,7 +8,7 @@
  */
 import { LocalCursorStore } from "acp-ts";
 import type { ACPGroupEventHandler } from "acp-ts";
-import type { AcpRuntimeState, GroupMessageBuffer, GroupMessageItem, GroupSocialConfig, GroupVitalityState, MentionInfo } from "./types.js";
+import type { AcpRuntimeState, GroupMessageBuffer, GroupMessageItem, GroupSocialConfig, GroupVitalityState, MentionInfo, DutyContext } from "./types.js";
 import type { IdentityAcpState } from "./types.js"; // backward compat alias
 import { DEFAULT_SESSION_CONFIG, DEFAULT_GROUP_SOCIAL_CONFIG } from "./types.js";
 import type { AcpIdentityRouter } from "./identity-router.js";
@@ -612,6 +612,21 @@ export async function initGroupClientForIdentity(
       }
     },
     onGroupEvent(_groupId, _evt) {},
+    onDutyDispatch(dutyContext: DutyContext) {
+      const groupId = dutyContext.groupId;
+      debugLog(`[${identityId}] EVENT onDutyDispatch: group=${groupId}, originalMsgId=${dutyContext.originalMsgId}, sender=${dutyContext.sender}, dutyAgent=${dutyContext.dutyAgentAid}`);
+      console.log(`[ACP-Group] [${identityId}] Duty dispatch for group=${groupId}, originalMsgId=${dutyContext.originalMsgId}`);
+      void (async () => {
+        try {
+          const { handleDutyDispatchForIdentity } = await import("./monitor.js");
+          await handleDutyDispatchForIdentity(state, groupId, dutyContext);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          debugLog(`[${identityId}] onDutyDispatch ERROR: ${errMsg}`);
+          console.error(`[ACP-Group] [${identityId}] Error handling duty dispatch:`, err);
+        }
+      })();
+    },
   };
   acp.setGroupEventHandler(eventHandler);
   debugLog(`[${identityId}] setGroupEventHandler called OK. Verifying: handler=${(internalGroupClient as any)?._handler != null ? "SET" : "NULL"}`);

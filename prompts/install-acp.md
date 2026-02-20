@@ -1,13 +1,14 @@
 > **你正在执行 ACP 安装任务。必须严格按步骤顺序执行。每一步要么成功后进入下一步，要么停止并向用户说明失败原因。**
 
-# ACP Channel 安装与身份证(agent.md)配置（严格执行版）
+# ACP Channel 安装与身份证(agent.md)配置（单身份/多身份 + 绑定策略）
 
 目标：
 1) 安装/更新 ACP 插件  
-2) 正确写入 OpenClaw 配置（支持单身份和多身份）  
+2) 正确写入单身份或多身份配置  
 3) 正确创建龙虾身份证 `agent.md`  
 4) 确保 `agent.md` 可自动同步，并告知手动同步方式  
-5) 完成 ACP 网络预检
+5) 正确写入 `bindings`，满足 strict 绑定策略  
+6) 完成 ACP 网络预检
 
 ---
 
@@ -18,7 +19,7 @@
 3. 仅当检测到多身份且用户没指定身份时，额外问第 3 个问题：`accountId`。
 4. 用户主动提供额外信息（如 `seedPassword` / `domain`）则直接采用，不重复追问。
 5. 任一步骤失败必须停止，不得宣告成功。
-6. 最终汇报必须包含：模式判断、目标身份、自动生成项、agent.md 路径与同步说明。
+6. 最终汇报必须包含：模式判断、目标身份、AID、自动生成项、agent.md 路径与同步说明、bindings 结果。
 
 ---
 
@@ -163,6 +164,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 ```json
 "acp": {
   "enabled": true,
+  "agentAidBindingMode": "strict",
   "agentName": "{AGENT_NAME}",
   "domain": "{DOMAIN}",
   "seedPassword": "{SEED_PASSWORD}",
@@ -179,6 +181,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 ```json
 "acp": {
   "enabled": true,
+  "agentAidBindingMode": "strict",
   "identities": {
     "{TARGET_ACCOUNT_ID}": {
       "agentName": "{AGENT_NAME}",
@@ -208,10 +211,23 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 }
 ```
 
-### 6.4 配置合法性校验
+### 6.4 写入/校验 bindings（关键）
+
+`strict` 模式默认要求 1:1 绑定，必须确保存在：
+
+```json
+{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
+```
+
+规则：
+- 如果 `bindings` 没有这条，追加。
+- 如果存在同 `accountId` 的错误绑定，先提示并修正为 1:1。
+- 多身份模式下，不能只改 `channels.acp.identities` 而不改 `bindings`。
+
+### 6.5 配置合法性校验
 
 ```bash
-node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;const p=c.plugins?.entries?.acp;const singleOk=!!(a?.enabled&&a?.agentName&&/^[a-z0-9-]+$/.test(a.agentName));const multiOk=!!(a?.enabled&&a?.identities&&Object.keys(a.identities).length>0);if((singleOk||multiOk)&&p?.enabled)console.log('Config OK');else{console.log('ERROR');process.exit(1)}"
+node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;const p=c.plugins?.entries?.acp;const b=Array.isArray(c.bindings)?c.bindings:[];const hasMode=!!(a?.agentAidBindingMode==='strict'||a?.agentAidBindingMode==='flex');const singleOk=!!(a?.enabled&&a?.agentName&&/^[a-z0-9-]+$/.test(a.agentName));const multiOk=!!(a?.enabled&&a?.identities&&Object.keys(a.identities).length>0);const bindOk=b.some(x=>x?.match?.channel==='acp');if((singleOk||multiOk)&&p?.enabled&&hasMode&&bindOk)console.log('Config OK');else{console.log('ERROR');process.exit(1)}"
 ```
 
 若失败：恢复备份并停止。
@@ -289,7 +305,7 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 
 1. ACP 建连后插件会自动上传 `agent.md`（无变化会跳过）。
 2. 本次已写入 `agentMdPath` 并创建对应 `agent.md` 文件。
-3. 后续修改 `agent.md` 可手动执行 `/acp-sync` 强制同步。
+3. 后续修改 `agent.md` 可手动执行 `/acp-sync` 强制同步（多身份可指定身份）。
 
 ---
 
@@ -321,7 +337,8 @@ const { AgentManager } = require(os.homedir()+'/.openclaw/extensions/acp/node_mo
 const cfg=JSON.parse(fs.readFileSync(path.join(os.homedir(),'.openclaw','openclaw.json'),'utf8'));
 const ac=cfg.channels?.acp||{};
 const accountId='{TARGET_ACCOUNT_ID}';
-const target=accountId==='default' ? ac : (ac.identities?.[accountId]||null);
+const hasIdentities=!!(ac.identities&&Object.keys(ac.identities).length>0);
+const target=hasIdentities ? (ac.identities?.[accountId]||null) : ac;
 if(!target||!target.agentName){console.error('PREFLIGHT_FAIL:'+accountId+': account config missing');process.exit(1)}
 const aid=target.agentName+'.'+(target.domain||'agentcp.io');
 (async()=>{
@@ -353,7 +370,7 @@ const aid=target.agentName+'.'+(target.domain||'agentcp.io');
 
 ---
 
-## 10. 完成汇报（必须包含 agent.md 与同步信息）
+## 10. 完成汇报（必须包含 agent.md、同步信息与 bindings）
 
 统一输出：
 
@@ -362,6 +379,7 @@ const aid=target.agentName+'.'+(target.domain||'agentcp.io');
 
 - 配置模式: {MODE}
 - 目标身份(accountId): {TARGET_ACCOUNT_ID}
+- 绑定模式: strict
 - AID: {AGENT_NAME}.{DOMAIN}
 
 自动生成:
@@ -374,6 +392,9 @@ const aid=target.agentName+'.'+(target.domain||'agentcp.io');
 用户提供:
 - agentName: {AGENT_NAME}
 - ownerAid: {OWNER_AID 或 "未设置"}
+
+bindings:
+- agentId={TARGET_ACCOUNT_ID} -> accountId={TARGET_ACCOUNT_ID} (channel=acp)
 
 身份证(agent.md):
 - 路径: ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md

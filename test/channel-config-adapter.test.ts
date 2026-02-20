@@ -93,4 +93,18 @@ describe("acp config adapter", () => {
     };
     expect(adapter.defaultAccountId?.(cfg)).toBe("default");
   });
+
+  it("resolveAccount includes agentAidBindingMode fallback (strict)", () => {
+    const cfg = {
+      channels: {
+        acp: {
+          enabled: true,
+          agentName: "legacy-bot",
+          domain: "agentcp.io",
+        },
+      },
+    };
+    const account = adapter.resolveAccount(cfg, "default");
+    expect((account as any).agentAidBindingMode).toBe("strict");
+  });
 });

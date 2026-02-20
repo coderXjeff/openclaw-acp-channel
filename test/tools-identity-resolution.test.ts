@@ -19,6 +19,7 @@ describe("acp_manage_contacts identity resolution", () => {
     router.registerIdentity("work", {
       accountId: "work",
       identityId: "work",
+      agentAidBindingMode: "strict",
       agentName: "work-bot",
       domain: "agentcp.io",
       fullAid: "work-bot.agentcp.io",

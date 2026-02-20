@@ -22,7 +22,8 @@ const AcpGroupParams = Type.Object({
       "create_group, get_group_info, get_members, " +
       "send_message, pull_messages, join_by_url, leave_group, add_member, remove_member, dissolve_group, " +
       "search_groups, get_announcement, update_announcement, create_invite_code, update_group_meta, " +
-      "get_public_info, ban_agent, unban_agent, review_join_request, get_pending_requests",
+      "get_public_info, ban_agent, unban_agent, review_join_request, get_pending_requests, " +
+      "update_duty_config, set_fixed_agents, get_duty_status, dispatch_decision, refresh_member_types",
   }),
   aid: Type.String({ description: "REQUIRED. Your full AID identity (e.g. seer.agentcp.io, guard.agentcp.io). You MUST always pass your own AID. Without this parameter, the tool cannot identify which agent's groups to operate on." }),
   group_id: Type.Optional(Type.String({ description: "Group ID (required for most group-specific actions)" })),
@@ -48,6 +49,18 @@ const AcpGroupParams = Type.Object({
   expires_at: Type.Optional(Type.Number({ description: "Expiry timestamp for invite code" })),
   sync: Type.Optional(Type.Boolean({ description: "For list_groups: when true, fetches the full list of joined groups from the server and merges with local cache. Recommended to set true to get accurate results." })),
   metadata: Type.Optional(Type.String({ description: "JSON string of metadata (for send_message)" })),
+  // Duty Agent parameters
+  duty_mode: Type.Optional(Type.String({ description: "Duty mode: rotation, fixed, or off (for update_duty_config)" })),
+  rotation_strategy: Type.Optional(Type.String({ description: "Rotation strategy: round_robin or random (for update_duty_config)" })),
+  shift_duration_ms: Type.Optional(Type.Number({ description: "Shift duration in ms (for update_duty_config)" })),
+  max_messages_per_shift: Type.Optional(Type.Number({ description: "Max messages per shift (for update_duty_config)" })),
+  dispatch_timeout_ms: Type.Optional(Type.Number({ description: "Dispatch timeout in ms (for update_duty_config)" })),
+  timeout_fallback: Type.Optional(Type.String({ description: "Timeout fallback: broadcast or suppress (for update_duty_config)" })),
+  duty_agents: Type.Optional(Type.String({ description: "Comma-separated AIDs for fixed duty agents (for set_fixed_agents)" })),
+  original_msg_id: Type.Optional(Type.Number({ description: "Original message ID (for dispatch_decision)" })),
+  decision_type: Type.Optional(Type.String({ description: "Decision type: broadcast, selective, or suppress (for dispatch_decision)" })),
+  hint: Type.Optional(Type.String({ description: "Hint text for dispatch decision (for dispatch_decision)" })),
+  reply_mode: Type.Optional(Type.String({ description: "Reply mode: direct or group (for dispatch_decision)" })),
 });
 
 type AcpGroupInput = Static<typeof AcpGroupParams>;
@@ -331,7 +344,25 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
           acp.addGroupToStore(groupId, groupId);
           debugLog(`join_by_url: joined group ${groupId} (auto-approved), added to store`);
           console.log(`[ACP-Group] join_by_url: joined group ${groupId} (auto-approved)`);
-          return textResult(`Successfully joined group ${groupId}`, { group_id: groupId });
+
+          // 加入成功后主动获取群信息，返回给大模型
+          try {
+            const info = await groupOps.getGroupInfo(targetAid, groupId);
+            const lines = [
+              `${state.aidKey} successfully joined group "${info.name}" (${groupId})`,
+              `Creator: ${info.creator}`,
+              `Members: ${info.member_count}`,
+              `Visibility: ${info.visibility}`,
+              `Status: ${info.status}`,
+              info.subject ? `Subject: ${info.subject}` : null,
+              info.alias ? `Alias: ${info.alias}` : null,
+              info.tags?.length ? `Tags: ${info.tags.join(", ")}` : null,
+            ].filter(Boolean).join("\n");
+            return textResult(lines, { group_id: groupId, aid: state.aidKey, group_info: info });
+          } catch (e) {
+            debugLog(`join_by_url: joined OK but getGroupInfo failed: ${e}`);
+            return textResult(`${state.aidKey} successfully joined group ${groupId}`, { group_id: groupId, aid: state.aidKey });
+          }
         }
 
         case "leave_group": {
@@ -465,6 +496,66 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
           return textResult(text, result);
         }
 
+        case "update_duty_config": {
+          if (!params.group_id) return textResult("Error: group_id is required", { error: "group_id required" });
+          if (!params.duty_mode) return textResult("Error: duty_mode is required (rotation, fixed, or off)", { error: "duty_mode required" });
+          const dutyConfig: Record<string, any> = { dutyMode: params.duty_mode };
+          if (params.rotation_strategy != null) dutyConfig.rotationStrategy = params.rotation_strategy;
+          if (params.shift_duration_ms != null) dutyConfig.shiftDurationMs = params.shift_duration_ms;
+          if (params.max_messages_per_shift != null) dutyConfig.maxMessagesPerShift = params.max_messages_per_shift;
+          if (params.dispatch_timeout_ms != null) dutyConfig.dispatchTimeoutMs = params.dispatch_timeout_ms;
+          if (params.timeout_fallback != null) dutyConfig.timeoutFallback = params.timeout_fallback;
+          await groupOps.updateDutyConfig(targetAid, params.group_id, dutyConfig);
+          return textResult(`Duty config updated for group ${params.group_id}: mode=${params.duty_mode}`, { ok: true, config: dutyConfig });
+        }
+
+        case "set_fixed_agents": {
+          if (!params.group_id) return textResult("Error: group_id is required", { error: "group_id required" });
+          if (!params.duty_agents) return textResult("Error: duty_agents is required (comma-separated AIDs)", { error: "duty_agents required" });
+          const agents = params.duty_agents.split(",").map(a => a.trim()).filter(Boolean);
+          if (agents.length === 0) return textResult("Error: duty_agents must contain at least one AID", { error: "empty duty_agents" });
+          await groupOps.setFixedDutyAgents(targetAid, params.group_id, agents);
+          return textResult(`Fixed duty agents set for group ${params.group_id}: ${agents.join(", ")}`, { ok: true, agents });
+        }
+
+        case "get_duty_status": {
+          if (!params.group_id) return textResult("Error: group_id is required", { error: "group_id required" });
+          const status = await groupOps.getDutyStatus(targetAid, params.group_id);
+          const lines = [
+            `Group: ${status.groupId}`,
+            `Duty Mode: ${status.dutyMode}`,
+            `Current Duty Agent: ${status.currentDutyAid ?? "none"}`,
+            status.shiftStartAt ? `Shift Start: ${new Date(status.shiftStartAt).toLocaleString()}` : null,
+            `Messages Handled: ${status.messagesHandled}`,
+          ].filter(Boolean).join("\n");
+          return textResult(lines, status);
+        }
+
+        case "dispatch_decision": {
+          if (!params.group_id) return textResult("Error: group_id is required", { error: "group_id required" });
+          if (params.original_msg_id == null) return textResult("Error: original_msg_id is required", { error: "original_msg_id required" });
+          if (!params.decision_type) return textResult("Error: decision_type is required (broadcast, selective, or suppress)", { error: "decision_type required" });
+          const decision: Record<string, any> = {
+            groupId: params.group_id,
+            originalMsgId: params.original_msg_id,
+            decisionType: params.decision_type,
+          };
+          if (params.agent_id) decision.targetAids = params.agent_id.split(",").map((a: string) => a.trim()).filter(Boolean);
+          if (params.hint) decision.hint = params.hint;
+          if (params.reply_mode) decision.replyMode = params.reply_mode;
+          await groupOps.submitDispatchDecision(targetAid, params.group_id, decision);
+          return textResult(`Dispatch decision submitted: ${params.decision_type} for msg_id=${params.original_msg_id}`, { ok: true, decision });
+        }
+
+        case "refresh_member_types": {
+          if (!params.group_id) return textResult("Error: group_id is required", { error: "group_id required" });
+          const result = await groupOps.refreshMemberTypes(targetAid, params.group_id);
+          const text = result.members.length === 0
+            ? "No members found."
+            : result.members.map((m: any) => `- ${m.aid} (${m.type}, ${m.online ? "online" : "offline"})`).join("\n");
+          return textResult(text, result);
+        }
+
         default: {
           const validActions = [
             "list_groups", "create_group", "get_group_info", "get_members",
@@ -473,6 +564,8 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
             "get_announcement", "update_announcement", "create_invite_code",
             "update_group_meta", "get_public_info", "ban_agent", "unban_agent",
             "review_join_request", "get_pending_requests",
+            "update_duty_config", "set_fixed_agents", "get_duty_status",
+            "dispatch_decision", "refresh_member_types",
           ];
           debugLog(`Unknown action: ${action}. Valid actions: ${validActions.join(", ")}`);
           return textResult(

@@ -10,6 +10,8 @@ import { checkAndUploadAgentMd } from "./src/monitor.js";
 import { createFetchAgentMdTool, createManageContactsTool } from "./src/tools.js";
 import { createGroupTool } from "./src/group-tools.js";
 import { createSyncCommand, createStatusCommand } from "./src/commands.js";
+import type { AcpChannelConfig } from "./src/types.js";
+import { analyzeAcpBindings } from "./src/binding-policy.js";
 
 function resolveAcpAccountIdsForAgent(cfg: OpenClawConfig | undefined, agentId?: string): string[] {
   const normalizedAgentId = agentId?.trim();
@@ -44,6 +46,24 @@ const plugin = {
 
     // 保存 runtime 引用
     setAcpRuntime(api.runtime);
+
+    // 启动时分析 ACP binding 策略与路由约束（strict 模式下 fail-fast）
+    const acpConfig = api.config.channels?.acp as AcpChannelConfig | undefined;
+    if (acpConfig?.enabled) {
+      const bindingAnalysis = analyzeAcpBindings(api.config, acpConfig);
+      for (const issue of bindingAnalysis.issues) {
+        const prefix = `[ACP][binding-policy][${issue.level}]`;
+        if (issue.level === "error") {
+          console.error(`${prefix} ${issue.message}`);
+        } else {
+          console.warn(`${prefix} ${issue.message}`);
+        }
+      }
+      const hasBlockingError = bindingAnalysis.issues.some((issue) => issue.level === "error");
+      if (hasBlockingError && bindingAnalysis.mode === "strict") {
+        throw new Error("ACP binding policy validation failed in strict mode. Please fix bindings/identities configuration.");
+      }
+    }
 
     // 注册 channel
     // TODO: 本地 ChannelPlugin 类型与 SDK 类型未对齐，待 openclaw SDK 导出兼容类型后移除断言

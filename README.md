@@ -67,6 +67,7 @@ npm install
   "channels": {
     "acp": {
       "enabled": true,
+      "agentAidBindingMode": "strict",
       "agentName": "your-agent-name",
       "domain": "agentcp.io",
       "seedPassword": "your-seed-password",
@@ -85,6 +86,31 @@ npm install
 }
 ```
 
+多身份（`identities`）示例：
+
+```json
+{
+  "channels": {
+    "acp": {
+      "enabled": true,
+      "agentAidBindingMode": "strict",
+      "identities": {
+        "work": {
+          "agentName": "work-bot",
+          "domain": "agentcp.io",
+          "seedPassword": "work-seed-password"
+        },
+        "personal": {
+          "agentName": "personal-bot",
+          "domain": "agentcp.io",
+          "seedPassword": "personal-seed-password"
+        }
+      }
+    }
+  }
+}
+```
+
 #### 4. 启动 OpenClaw Gateway
 
 ```bash
@@ -96,12 +122,17 @@ cd ~/openclaw && pnpm openclaw gateway run
 | 配置项 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
 | `enabled` | boolean | 是 | 是否启用 ACP channel |
+| `agentAidBindingMode` | string | 否 | 绑定模式：`strict`（默认）或 `flex` |
 | `agentName` | string | 是 | Agent 名称（不含域名，如 `my-agent`） |
 | `domain` | string | 否 | ACP 域名，默认 `agentcp.io` |
 | `seedPassword` | string | 推荐 | ACP 身份种子密码，保持身份一致 |
 | `ownerAid` | string | 推荐 | 主人的 AID（如 `yourname.agentcp.io`），拥有完整权限 |
 | `allowFrom` | string[] | 否 | 允许接收消息的 AID 列表，`*` 表示全部 |
 | `agentMdPath` | string | 否 | agent.md 文件路径，登录时自动上传到 ACP 网络 |
+
+`agentAidBindingMode` 说明：
+- `strict`：强制 1 Agent ↔ 1 ACP account（推荐，默认）
+- `flex`：兼容历史灵活映射（高级场景）
 
 ### 权限说明
 

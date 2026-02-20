@@ -38,6 +38,11 @@ describe("acpConfigSchema defaults", () => {
     expect(required ?? []).not.toContain("agentName");
   });
 
+  it("agentAidBindingMode default is strict", () => {
+    const props = schema.properties ?? {};
+    expect(props.agentAidBindingMode?.default).toBe("strict");
+  });
+
   it("identities schema 已暴露且限制 key 格式", () => {
     const identities = schema.properties?.identities as SchemaNode | undefined;
     expect(identities).toBeDefined();

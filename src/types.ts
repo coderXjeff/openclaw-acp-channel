@@ -5,6 +5,7 @@ export interface GroupSocialConfig {
   mentionMinIntervalMs?: number;    // 提及最小节流 ms，默认 3000
   maxCharsPerMessage?: number;      // 回复最大字符数，默认 500
   vitalityWindowMs?: number;        // 活力滑窗 ms，默认 300000
+  maxJoinedGroups?: number;         // 同时加入群上限，默认 10
 }
 
 export const DEFAULT_GROUP_SOCIAL_CONFIG: Required<GroupSocialConfig> = {
@@ -13,6 +14,7 @@ export const DEFAULT_GROUP_SOCIAL_CONFIG: Required<GroupSocialConfig> = {
   mentionMinIntervalMs: 3000,
   maxCharsPerMessage: 500,
   vitalityWindowMs: 300_000,
+  maxJoinedGroups: 10,
 };
 
 export type VitalityState = "DORMANT" | "COOLING" | "ACTIVE" | "HEATED";
@@ -57,6 +59,10 @@ export interface AcpIdentityEntry {
 // ACP Channel 配置类型 (acp-ts 版本)
 export interface AcpChannelConfig {
   enabled: boolean;
+  // 绑定策略：
+  // strict: 强制一 Agent 一 AID（agentId/accountId 1:1）
+  // flex:   保持当前灵活映射能力
+  agentAidBindingMode?: "strict" | "flex";
   // 单身份配置（向后兼容）
   agentName?: string;       // Agent 名称 (不含域名)
   domain?: string;          // ACP 域名，如 agentcp.io
@@ -107,6 +113,7 @@ export interface AcpSessionConfig {
 export interface ResolvedAcpAccount {
   accountId: string;
   identityId: string;
+  agentAidBindingMode: "strict" | "flex";
   agentName: string;
   domain: string;
   fullAid: string;          // 完整 AID: agentName.domain
@@ -209,6 +216,77 @@ export interface GroupMessageBuffer {
   hasPendingMention: boolean;
   lastNReplyHashes: string[];
   mentionDelayTimer: ReturnType<typeof setTimeout> | null;
+}
+
+// ===== 值班 Agent (Duty) 类型 =====
+
+/** 值班分发通知事件名 */
+export const NOTIFY_DUTY_DISPATCH = "duty_dispatch" as const;
+
+/** 值班成员信息 */
+export interface DutyMemberInfo {
+  aid: string;
+  type: "ai" | "human";
+  online: boolean;
+}
+
+/** 值班分发上下文（由 SDK 回调传入） */
+export interface DutyContext {
+  groupId: string;
+  originalMsgId: number;
+  sender: string;
+  content: string;
+  timestamp: number;
+  dutyAgentAid: string;
+  onlineAiMembers: DutyMemberInfo[];
+  humanMembers: DutyMemberInfo[];
+}
+
+/** 仲裁决策参数 */
+export interface DispatchDecisionParams {
+  groupId: string;
+  originalMsgId: number;
+  decisionType: "broadcast" | "selective" | "suppress";
+  targetAids?: string[];
+  hint?: string;
+  replyMode?: "direct" | "group";
+}
+
+/** 分发元数据 */
+export interface DispatchMetadata {
+  originalMsgId: number;
+  decisionType: string;
+  decidedBy: string;
+  decidedAt: number;
+}
+
+/** 值班配置（per-group，通过 API 管理） */
+export interface DutyConfig {
+  dutyMode: "rotation" | "fixed" | "off";
+  rotationStrategy?: "round_robin" | "random";
+  shiftDurationMs?: number;
+  maxMessagesPerShift?: number;
+  dispatchTimeoutMs?: number;
+  timeoutFallback?: "broadcast" | "suppress";
+}
+
+/** 值班状态 */
+export interface DutyState {
+  groupId: string;
+  currentDutyAid: string | null;
+  dutyMode: string;
+  shiftStartAt: number | null;
+  messagesHandled: number;
+}
+
+/** 值班状态查询响应 */
+export interface DutyStatusResp {
+  groupId: string;
+  dutyMode: string;
+  currentDutyAid: string | null;
+  shiftStartAt: number | null;
+  messagesHandled: number;
+  config: DutyConfig;
 }
 
 /** 联系人 */
