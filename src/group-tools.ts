@@ -331,14 +331,14 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
           debugLog(`join_by_url: parsed groupId=${groupId}, calling joinByUrl with identity=${state.aidKey}, targetAid=${targetAid}`);
 
           console.log(`[ACP-Group] join_by_url: url=${groupUrl}, inviteCode=${inviteCode ?? "none"}, identity=${state.aidKey}`);
-          const requestId = await groupOps.joinByUrl(groupUrl, {
+          const joinResult = await groupOps.joinByUrl(groupUrl, {
             inviteCode,
             message: params.message,
           });
-          if (requestId) {
-            debugLog(`join_by_url: request submitted, requestId=${requestId}, groupId=${groupId}`);
-            console.log(`[ACP-Group] join_by_url: request submitted, requestId=${requestId}, groupId=${groupId}`);
-            return textResult(`Join request submitted (request_id: ${requestId}). Waiting for approval.`, { request_id: requestId, group_id: groupId });
+          if (joinResult.status === "pending" && joinResult.request_id) {
+            debugLog(`join_by_url: request submitted, requestId=${joinResult.request_id}, groupId=${groupId}`);
+            console.log(`[ACP-Group] join_by_url: request submitted, requestId=${joinResult.request_id}, groupId=${groupId}`);
+            return textResult(`Join request submitted (request_id: ${joinResult.request_id}). Waiting for approval.`, { request_id: joinResult.request_id, group_id: groupId });
           }
           // 免审核加入成功，同步到本地存储
           acp.addGroupToStore(groupId, groupId);
