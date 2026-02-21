@@ -190,6 +190,16 @@ export type ChannelStatusAdapter<ResolvedAccount, Probe = unknown, Audit = unkno
   collectStatusIssues?: (accounts: ChannelAccountSnapshot[]) => ChannelStatusIssue[];
 };
 
+// ===== Agent Prompt 扩展 =====
+export type ChannelAgentPromptAdapter = {
+  messageToolHints?: (params: { cfg: any; accountId?: string | null }) => string[];
+};
+
+// ===== Groups 扩展 =====
+export type ChannelGroupsAdapter = {
+  resolveGroupIntroHint?: (params: { cfg: any; groupId: string; accountId?: string | null }) => string | undefined;
+};
+
 // ===== Channel Plugin =====
 export type ChannelPlugin<ResolvedAccount = any, Probe = unknown, Audit = unknown> = {
   id: ChannelId;
@@ -202,6 +212,8 @@ export type ChannelPlugin<ResolvedAccount = any, Probe = unknown, Audit = unknow
   actions?: ChannelMessageActionAdapter;
   status?: ChannelStatusAdapter<ResolvedAccount, Probe, Audit>;
   gateway?: ChannelGatewayAdapter<ResolvedAccount>;
+  agentPrompt?: ChannelAgentPromptAdapter;
+  groups?: ChannelGroupsAdapter;
   defaults?: {
     queue?: {
       debounceMs?: number;

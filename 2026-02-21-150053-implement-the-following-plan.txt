@@ -1,0 +1,804 @@
+
+╭─── Claude Code v2.1.50 ──────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│                    Welcome back!                   │ started                 │
+│                                                    │ Run /init to create a … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ Recent activity         │
+│                        ▘▘ ▝▝                       │ No recent activity      │
+│                                                    │                         │
+│            Opus 4.6 · API Usage Billing            │                         │
+│ ~\AppData\Roaming\Evol\default\workspace\openclaw… │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+ ‼Auth conflict: Both a token (ANTHROPIC_AUTH_TOKEN) and an API key 
+  (ANTHROPIC_API_KEY) are set. This may lead to unexpected behavior.
+    • Trying to use ANTHROPIC_AUTH_TOKEN? Unset the ANTHROPIC_API_KEY 
+    environment variable, or claude /logout then say "No" to the API key 
+    approval before login.
+    • Trying to use ANTHROPIC_API_KEY? Unset the ANTHROPIC_AUTH_TOKEN 
+    environment variable.
+  Welcome to Opus 4.6
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Plan to implement                                                            │
+│                                                                              │
+│ Plan: ACP Channel 上下文 Markdown 文件体系设计与实现                         │
+│                                                                              │
+│ Context                                                                      │
+│                                                                              │
+│ ACP Channel 需要一套 .md 文件体系，让 Agent 在与不同 AID                     │
+│ 私聊、在不同群聊时，加载对应的上下文文档。                                   │
+│                                                                              │
+│ 核心问题：框架假设一个 Agent = 一个身份 = 一套 .md，但 ACP 打破了这个假设 —  │
+│ 一个 Agent 可以有多个 AID                                                    │
+│ 身份，每个身份面对不同的对手和群，需要不同的上下文。                         │
+│                                                                              │
+│ 约束：                                                                       │
+│ - 不修改 clawdbot 框架代码，仅在 ACP Channel 插件内实现                      │
+│ - 最终通过 Skill 安装 ACP Channel 完成部署                                   │
+│ - 注入路径：通过 GroupSystemPrompt 字段注入（无大小限制，无截断）            │
+│ - 框架 bootstrap hook 只支持 8 个标准文件名，不能添加自定义文件 — 所以不能用 │
+│  bootstrap hook 注入                                                         │
+│ - ACP 工具通过 api.registerTool() 注册，Agent 可以用 write/edit 工具编辑     │
+│ workspace 内文件                                                             │
+│                                                                              │
+│ 技术发现                                                                     │
+│                                                                              │
+│ 1. GroupSystemPrompt 无截断：框架对 GroupSystemPrompt 无大小限制，直接拼入   │
+│ extraSystemPrompt                                                            │
+│ 2. Bootstrap hook 不可用：WorkspaceBootstrapFileName 是严格类型，只支持 8    │
+│ 个标准文件名，不能添加自定义 .md                                             │
+│ 3. Workspace 路径已有：ACP Channel 通过 before_agent_start hook 获取         │
+│ workspaceDir，并已支持 identities/{identityId}/ 子目录                       │
+│ 4. 插件升级安全：~/.clawdbot/extensions/ 下的文件会被覆盖，workspace         │
+│ 下的文件不会                                                                 │
+│ 5. Agent 可写文件：非 owner 的 ACP 会话中，Agent 仍可使用 write/edit         │
+│ 工具（除非沙箱/策略阻止）                                                    │
+│ 6. memory 工具不可扩展：框架 memory_search/memory_get                        │
+│ 只搜索固定路径，不能搜索自定义目录                                           │
+│                                                                              │
+│ 设计方案                                                                     │
+│                                                                              │
+│ 一、目录结构                                                                 │
+│                                                                              │
+│ 所有 ACP 上下文文件存储在 workspace 的 identities/{identityId}/              │
+│ 目录下。用户澄清：peers 和 groups 都在身份目录下（隔离）。                   │
+│                                                                              │
+│ ~/.openclaw/workspace/                      ← ACP workspace 根目录           │
+│ ├── SOUL.md                                 ←                                │
+│ 全局默认人格（所有身份共享底座）                                             │
+│ ├── IDENTITY.md                             ← 全局默认身份                   │
+│ ├── AGENTS.md                               ← 全局行为指南                   │
+│ ├── USER.md                                 ← 主人信息                       │
+│ ├── MEMORY.md                               ←                                │
+│ 全局共享记忆（跨身份、跨对手可见）                                           │
+│ │                                                                            │
+│ ├── acp/                                    ← ACP                            │
+│ 协议级文件（用户澄清：基础认知也拆 .md）                                     │
+│ │   ├── ACP_PROTOCOL.md                     ← ACP 网络基础认知（替代         │
+│ buildAcpSystemPrompt 硬编码）                                                │
+│ │   ├── ACP_SOVEREIGNTY.md                  ← 主权规则 + 保密规则            │
+│ │   └── ACP_GROUP_RULES.md                  ← 群聊通用规则（格式、隐私）     │
+│ │                                                                            │
+│ ├── identities/                                                              │
+│ │   ├── guard/                              ← guard 身份                     │
+│ │   │   ├── SOUL.md                         ← guard 专属人格（覆盖全局）     │
+│ │   │   ├── IDENTITY.md                     ← guard 身份元数据               │
+│ │   │   ├── MEMORY.md                       ← guard 身份级记忆               │
+│ │   │   │                                                                    │
+│ │   │   ├── peers/                          ← guard 的私聊对手               │
+│ │   │   │   ├── alice.agentcp.io/                                            │
+│ │   │   │   │   ├── PEER.md                 ← 对方画像 + 关系 + 交互规则     │
+│ │   │   │   │   └── MEMORY.md               ← 与 alice 的私聊记忆（隔离）    │
+│ │   │   │   └── bob.agentcp.io/                                              │
+│ │   │   │       ├── PEER.md                                                  │
+│ │   │   │       └── MEMORY.md                                                │
+│ │   │   │                                                                    │
+│ │   │   └── groups/                         ← guard 加入的群                 │
+│ │   │       ├── {groupId-1}/                                                 │
+│ │   │       │   ├── GROUP.md                ← 群基本信息 + 重要成员          │
+│ │   │       │   ├── MY_ROLE.md              ←                                │
+│ 我在此群的角色（同学/员工/...）                                              │
+│ │   │       │   └── MEMORY.md              ← 此群的记忆（隔离）              │
+│ │   │       └── {groupId-2}/                                                 │
+│ │   │           ├── GROUP.md                                                 │
+│ │   │           ├── MY_ROLE.md                                               │
+│ │   │           └── MEMORY.md                                                │
+│ │   │                                                                        │
+│ │   └── seer/                               ← seer 身份（结构同上）          │
+│ │       ├── SOUL.md                                                          │
+│ │       ├── IDENTITY.md                                                      │
+│ │       ├── MEMORY.md                                                        │
+│ │       ├── peers/                                                           │
+│ │       └── groups/                                                          │
+│                                                                              │
+│ 二、各 .md 文件定义                                                          │
+│                                                                              │
+│ 2.1 ACP 协议级文件（acp/ 目录）                                              │
+│                                                                              │
+│ 文件: ACP_PROTOCOL.md                                                        │
+│ 作用: ACP 网络基础认知：AID 是什么、ACP System Verified 含义、能力概要       │
+│ 由谁维护: 插件初始化自动生成默认模板，用户可编辑                             │
+│ 预估 Token: ~800                                                             │
+│ ────────────────────────────────────────                                     │
+│ 文件: ACP_SOVEREIGNTY.md                                                     │
+│ 作用: 主权规则、外部 Agent 权限边界、保密规则、Owner 绝对权限                │
+│ 由谁维护: 同上                                                               │
+│ 预估 Token: ~500                                                             │
+│ ────────────────────────────────────────                                     │
+│ 文件: ACP_GROUP_RULES.md                                                     │
+│ 作用: 群聊通用规则：纯文本格式、字数限制、隐私保密                           │
+│ 由谁维护: 同上                                                               │
+│ 预估 Token: ~300                                                             │
+│                                                                              │
+│ 这些文件替代当前 buildAcpSystemPrompt()                                      │
+│ 中的硬编码内容。动态参数（selfAid、senderAid、groupContext                   │
+│ 等）仍由代码注入，但基础认知文本从文件加载。                                 │
+│                                                                              │
+│ 2.2 身份级文件（identities/{identityId}/）                                   │
+│                                                                              │
+│ 文件: SOUL.md                                                                │
+│ 作用: 此身份的人格定义（覆盖全局）                                           │
+│ 由谁维护: 用户/Agent 编辑                                                    │
+│ 预估 Token: ~300-500                                                         │
+│ ────────────────────────────────────────                                     │
+│ 文件: IDENTITY.md                                                            │
+│ 作用: 身份元数据（名字、emoji、风格）                                        │
+│ 由谁维护: 用户编辑                                                           │
+│ 预估 Token: ~100-200                                                         │
+│ ────────────────────────────────────────                                     │
+│ 文件: MEMORY.md                                                              │
+│ 作用: 身份级记忆：跨对手/跨群可见的信息                                      │
+│ 由谁维护: Agent 自动维护                                                     │
+│ 预估 Token: ~500-2000                                                        │
+│                                                                              │
+│ 已有机制（agent-md-sources.ts），但目前仅用于构建                            │
+│ agent.md。需要扩展为也用于构建 GroupSystemPrompt。                           │
+│                                                                              │
+│ 2.3 对手层文件（peers/{peerAid}/）                                           │
+│                                                                              │
+│ 文件: PEER.md                                                                │
+│ 作用: 对方画像 + 我和他的关系 + 交互规则 + 话题偏好                          │
+│ 创建时机: 首次私聊时自动创建模板                                             │
+│ 预估 Token: ~200-500                                                         │
+│ ────────────────────────────────────────                                     │
+│ 文件: MEMORY.md                                                              │
+│ 作用: 与此人的交互记忆（隔离，不泄露到其他会话）                             │
+│ 创建时机: 首次私聊时自动创建空文件                                           │
+│ 预估 Token: ~200-1500                                                        │
+│                                                                              │
+│ PEER.md 模板内容：                                                           │
+│ # Peer Profile                                                               │
+│                                                                              │
+│ ## Identity                                                                  │
+│ - AID: {peerAid}                                                             │
+│ - Name: {从 agent.md 获取或 AID 前缀}                                        │
+│ - Relationship: {unknown / contact / friend / collaborator / owner}          │
+│                                                                              │
+│ ## Interaction Rules                                                         │
+│ - Tone: {default}                                                            │
+│ - Topics of interest: {待发现}                                               │
+│ - Sensitive topics: {无}                                                     │
+│                                                                              │
+│ ## Notes                                                                     │
+│ {自由笔记区}                                                                 │
+│                                                                              │
+│ 2.4 群层文件（groups/{groupId}/）                                            │
+│                                                                              │
+│ 文件: GROUP.md                                                               │
+│ 作用: 群基本信息、主题、重要成员、关注话题                                   │
+│ 创建时机: 首次收到群消息时自动创建模板                                       │
+│ 预估 Token: ~200-400                                                         │
+│ ────────────────────────────────────────                                     │
+│ 文件: MY_ROLE.md                                                             │
+│ 作用: 我在此群的角色定义（核心需求）                                         │
+│ 创建时机: 首次收到群消息时创建默认模板，用户/Agent 编辑                      │
+│ 预估 Token: ~100-300                                                         │
+│ ────────────────────────────────────────                                     │
+│ 文件: MEMORY.md                                                              │
+│ 作用: 群记忆：关键讨论、决策、事件                                           │
+│ 创建时机: 首次收到群消息时自动创建空文件                                     │
+│ 预估 Token: ~200-1500                                                        │
+│                                                                              │
+│ MY_ROLE.md 模板内容：                                                        │
+│ # My Role in This Group                                                      │
+│                                                                              │
+│ ## Role                                                                      │
+│ {default: group member}                                                      │
+│                                                                              │
+│ ## Persona                                                                   │
+│ {在此群中的表现方式，可以与全局 SOUL.md 不同}                                │
+│                                                                              │
+│ ## Focus                                                                     │
+│ {在此群中关注的话题}                                                         │
+│                                                                              │
+│ ## Rules                                                                     │
+│ {此群特有的行为规则}                                                         │
+│                                                                              │
+│ GROUP.md 模板内容：                                                          │
+│ # Group Profile                                                              │
+│                                                                              │
+│ ## Info                                                                      │
+│ - Group ID: {groupId}                                                        │
+│ - Name: {从 getGroupInfo 获取}                                               │
+│ - Topic: {subject}                                                           │
+│                                                                              │
+│ ## Key Members                                                               │
+│ {待发现}                                                                     │
+│                                                                              │
+│ ## Group Culture                                                             │
+│ {待发现}                                                                     │
+│                                                                              │
+│ ## Notes                                                                     │
+│ {自由笔记区}                                                                 │
+│                                                                              │
+│ 三、注入逻辑                                                                 │
+│                                                                              │
+│ 3.1 注入时机与路径                                                           │
+│                                                                              │
+│ 所有 ACP .md 文件通过 GroupSystemPrompt 字段注入，拼接到 extraSystemPrompt   │
+│ 中。                                                                         │
+│                                                                              │
+│ 私聊注入（handleInboundMessageForIdentity）：                                │
+│ GroupSystemPrompt =                                                          │
+│   [1] ACP_PROTOCOL.md（基础认知 + 动态参数注入）                             │
+│   [2] ACP_SOVEREIGNTY.md                                                     │
+│   [3] identities/{id}/SOUL.md 的 ACP 摘要（可选，避免与框架 Project Context  │
+│ 重复）                                                                       │
+│   [4] peers/{peerAid}/PEER.md                                                │
+│   [5] peers/{peerAid}/MEMORY.md（按 token 预算截断）                         │
+│   [6] identities/{id}/MEMORY.md（按 token 预算截断）                         │
+│   [7] "## Current Session" 动态段（selfAid, senderAid, role — 仍由代码生成） │
+│                                                                              │
+│ 群聊注入（handleGroupMessagesForIdentity）：                                 │
+│ GroupSystemPrompt =                                                          │
+│   [1] ACP_PROTOCOL.md                                                        │
+│   [2] ACP_SOVEREIGNTY.md                                                     │
+│   [3] ACP_GROUP_RULES.md                                                     │
+│   [4] groups/{groupId}/MY_ROLE.md                                            │
+│   [5] groups/{groupId}/GROUP.md                                              │
+│   [6] groups/{groupId}/MEMORY.md（按 token 预算截断）                        │
+│   [7] identities/{id}/MEMORY.md（按 token 预算截断）                         │
+│   [8] Group Situation Context（P1 态势 — 仍由代码生成）                      │
+│   [9] "## Current Session" 动态段                                            │
+│                                                                              │
+│ 3.2 Token 预算建议                                                           │
+│                                                                              │
+│ 场景: ACP 协议文件                                                           │
+│ 预算: ~1,600 固定                                                            │
+│ 说明: ACP_PROTOCOL + ACP_SOVEREIGNTY + (ACP_GROUP_RULES)                     │
+│ ────────────────────────────────────────                                     │
+│ 场景: 对手/群上下文                                                          │
+│ 预算: ~1,500 上限                                                            │
+│ 说明: PEER.md + GROUP.md + MY_ROLE.md                                        │
+│ ────────────────────────────────────────                                     │
+│ 场景: 记忆文件                                                               │
+│ 预算: ~2,000 上限                                                            │
+│ 说明: 对手/群 MEMORY + 身份 MEMORY，超限时截断                               │
+│ ────────────────────────────────────────                                     │
+│ 场景: 动态段                                                                 │
+│ 预算: ~500                                                                   │
+│ 说明: Current Session + Group Situation                                      │
+│ ────────────────────────────────────────                                     │
+│ 场景: 私聊总计                                                               │
+│ 预算: ~4,100                                                                 │
+│ 说明:                                                                        │
+│ ────────────────────────────────────────                                     │
+│ 场景: 群聊总计                                                               │
+│ 预算: ~5,600                                                                 │
+│ 说明:                                                                        │
+│                                                                              │
+│ 对比现状硬编码注入的 ~1,500-3,000 token，增加约 2,000-3,000 token，在 200k   │
+│ 窗口下完全可接受。                                                           │
+│                                                                              │
+│ 截断策略：                                                                   │
+│ - MEMORY.md 按 token 预算从尾部截断（保留最近的记忆）                        │
+│ - PEER.md / GROUP.md / MY_ROLE.md 不截断（用户控制长度）                     │
+│ - 如果总预算超过 6,000 token，按优先级裁剪：先裁身份级 MEMORY，再裁对手/群   │
+│ MEMORY                                                                       │
+│                                                                              │
+│ 四、文件生命周期                                                             │
+│                                                                              │
+│ 4.1 创建时机                                                                 │
+│                                                                              │
+│ 文件: acp/*.md                                                               │
+│ 创建时机: 插件首次启动时                                                     │
+│ 创建方式: 代码检测不存在则写入默认模板                                       │
+│ ────────────────────────────────────────                                     │
+│ 文件: identities/{id}/SOUL.md                                                │
+│ 创建时机: 已有机制，用户手动创建                                             │
+│ 创建方式: 用户编辑                                                           │
+│ ────────────────────────────────────────                                     │
+│ 文件: identities/{id}/MEMORY.md                                              │
+│ 创建时机: 首次 ACP 会话时                                                    │
+│ 创建方式: 代码自动创建空文件                                                 │
+│ ────────────────────────────────────────                                     │
+│ 文件: peers/{aid}/PEER.md                                                    │
+│ 创建时机: 首次与该 AID 私聊时                                                │
+│ 创建方式: 代码生成模板（填入 AID、从 agent.md cache 填入名称）               │
+│ ────────────────────────────────────────                                     │
+│ 文件: peers/{aid}/MEMORY.md                                                  │
+│ 创建时机: 同上                                                               │
+│ 创建方式: 代码创建空文件                                                     │
+│ ────────────────────────────────────────                                     │
+│ 文件: groups/{id}/GROUP.md                                                   │
+│ 创建时机: 首次收到该群消息时                                                 │
+│ 创建方式: 代码生成模板（填入 groupId、群名）                                 │
+│ ────────────────────────────────────────                                     │
+│ 文件: groups/{id}/MY_ROLE.md                                                 │
+│ 创建时机: 同上                                                               │
+│ 创建方式: 代码生成默认模板                                                   │
+│ ────────────────────────────────────────                                     │
+│ 文件: groups/{id}/MEMORY.md                                                  │
+│ 创建时机: 同上                                                               │
+│ 创建方式: 代码创建空文件                                                     │
+│                                                                              │
+│ 4.2 维护方式                                                                 │
+│                                                                              │
+│ 维护方: 用户                                                                 │
+│ 可维护的文件: 所有 .md                                                       │
+│ 方式: 直接编辑文件，或通过 Agent 指令                                        │
+│ ────────────────────────────────────────                                     │
+│ 维护方: Agent                                                                │
+│ 可维护的文件: MEMORY.md、PEER.md（Notes 区）、GROUP.md（Notes 区）           │
+│ 方式: 通过新注册的 acp_context 工具                                          │
+│ ────────────────────────────────────────                                     │
+│ 维护方: 代码                                                                 │
+│ 可维护的文件: 模板初始化                                                     │
+│ 方式: ensureContextFiles() 函数                                              │
+│                                                                              │
+│ 五、工具设计                                                                 │
+│                                                                              │
+│ 注册一个新工具 acp_context，Agent 用它来读写 ACP 上下文文件。                │
+│                                                                              │
+│ 为什么不直接用框架的 write/edit 工具：                                       │
+│ 1. 框架的 write/edit 需要绝对路径，Agent 不知道 workspace 路径               │
+│ 2. 需要权限控制：外部 Agent 的会话中，Agent 应该能更新记忆，但不应该让外部   │
+│ Agent 通过 prompt injection 操控 Agent 修改 PEER.md 或 MY_ROLE.md            │
+│ 3. 需要自动截断/格式校验                                                     │
+│                                                                              │
+│ acp_context 工具设计：                                                       │
+│                                                                              │
+│ {                                                                            │
+│   name: "acp_context",                                                       │
+│   actions: [                                                                 │
+│     // 读取                                                                  │
+│     "read_peer",        // 读取 peers/{aid}/PEER.md                          │
+│     "read_peer_memory", // 读取 peers/{aid}/MEMORY.md                        │
+│     "read_group",       // 读取 groups/{gid}/GROUP.md                        │
+│     "read_group_role",  // 读取 groups/{gid}/MY_ROLE.md                      │
+│     "read_group_memory",// 读取 groups/{gid}/MEMORY.md                       │
+│     "read_identity_memory", // 读取 identities/{id}/MEMORY.md                │
+│     "read_global_memory",   // 读取 workspace/MEMORY.md                      │
+│                                                                              │
+│     // 写入/追加                                                             │
+│     "update_peer",         // 更新 PEER.md                                   │
+│     "update_group",        // 更新 GROUP.md                                  │
+│     "update_group_role",   // 更新 MY_ROLE.md                                │
+│     "append_memory",       // 追加记忆到指定                                 │
+│ MEMORY.md（peer/group/identity/global）                                      │
+│     "search_memory",       // 在指定范围搜索记忆                             │
+│                                                                              │
+│     // 提升记忆（跨上下文）                                                  │
+│     "promote_memory",      // 将记忆从 peer/group 级提升到 identity/global   │
+│ 级                                                                           │
+│   ],                                                                         │
+│   parameters: {                                                              │
+│     action: string,                                                          │
+│     aid: string,        // 当前身份 AID（必填）                              │
+│     peer_aid?: string,  // 对手 AID（peer 操作时）                           │
+│     group_id?: string,  // 群 ID（group 操作时）                             │
+│     scope?: string,     // 记忆范围: peer / group / identity / global        │
+│     content?: string,   // 写入内容                                          │
+│     query?: string,     // 搜索关键词                                        │
+│     section?: string,   // 更新的具体段落（如 "Notes", "Key Members"）       │
+│   }                                                                          │
+│ }                                                                            │
+│                                                                              │
+│ 权限控制：                                                                   │
+│ - Owner 会话：所有 action 可用                                               │
+│ - 外部 Agent 会话：仅 append_memory（scope=peer）可用 — Agent                │
+│ 只能记录当前对话中的信息                                                     │
+│ - 群聊会话：仅 append_memory（scope=group）+ read_group + read_group_memory  │
+│ 可用                                                                         │
+│                                                                              │
+│ 六、记忆分层与跨上下文机制                                                   │
+│                                                                              │
+│ 6.1 记忆可见性矩阵                                                           │
+│                                                                              │
+│ 记忆位置: workspace/MEMORY.md（全局）                                        │
+│ 私聊 A 可见: 是（框架加载）                                                  │
+│ 私聊 B 可见: 是                                                              │
+│ 群 X 可见: 是                                                                │
+│ 群 Y 可见: 是                                                                │
+│ ────────────────────────────────────────                                     │
+│ 记忆位置: identities/{id}/MEMORY.md（身份级）                                │
+│ 私聊 A 可见: 是                                                              │
+│ 私聊 B 可见: 是                                                              │
+│ 群 X 可见: 是                                                                │
+│ 群 Y 可见: 是                                                                │
+│ ────────────────────────────────────────                                     │
+│ 记忆位置: peers/A/MEMORY.md（对手级）                                        │
+│ 私聊 A 可见: 是                                                              │
+│ 私聊 B 可见: 否                                                              │
+│ 群 X 可见: 否                                                                │
+│ 群 Y 可见: 否                                                                │
+│ ────────────────────────────────────────                                     │
+│ 记忆位置: groups/X/MEMORY.md（群级）                                         │
+│ 私聊 A 可见: 否                                                              │
+│ 私聊 B 可见: 否                                                              │
+│ 群 X 可见: 是                                                                │
+│ 群 Y 可见: 否                                                                │
+│                                                                              │
+│ 6.2 与框架 MEMORY.md 的关系                                                  │
+│                                                                              │
+│ - 框架的 MEMORY.md（workspace 根）→ 全局共享记忆，由框架 Project Context     │
+│ 加载，所有 session 可见。不改动，保持现有机制。                              │
+│ - ACP 的分层 MEMORY.md → 通过 GroupSystemPrompt 注入，仅在 ACP 会话中可见。  │
+│                                                                              │
+│ 两套记忆互不干扰：                                                           │
+│ - 框架 MEMORY.md 记录跨 channel 的通用信息（用户偏好、全局知识）             │
+│ - ACP MEMORY.md 记录 ACP 特有的社交信息（对手关系、群事件）                  │
+│                                                                              │
+│ 6.3 跨上下文信息流动                                                         │
+│                                                                              │
+│ 操作: promote_memory(scope=peer → identity)                                  │
+│ 效果: 对手级记忆复制到身份级（所有该身份的会话可见）                         │
+│ 触发方式: Agent 自主判断 or 用户指令                                         │
+│ ────────────────────────────────────────                                     │
+│ 操作: promote_memory(scope=group → identity)                                 │
+│ 效果: 群级记忆复制到身份级                                                   │
+│ 触发方式: 同上                                                               │
+│ ────────────────────────────────────────                                     │
+│ 操作: promote_memory(scope=identity → global)                                │
+│ 效果: 身份级记忆复制到全局 workspace/MEMORY.md                               │
+│ 触发方式: 同上（需 owner 权限）                                              │
+│                                                                              │
+│ 典型场景：                                                                   │
+│ - 在群里了解到 "Bob 是 Python 专家" → Agent 自主 promote 到身份级 →          │
+│ 私聊其他人时也知道                                                           │
+│ - 在私聊中得知 "Alice 的生日是 3 月 15 号" → Agent 自主 promote 到身份级 →   │
+│ 在群里也能记住                                                               │
+│                                                                              │
+│ 七、buildAcpSystemPrompt 重构                                                │
+│                                                                              │
+│ 现有 buildAcpSystemPrompt() 拆分为：                                         │
+│                                                                              │
+│ 1. 文件加载：新增 loadAcpContextFiles() 函数，从 workspace 读取 .md 文件     │
+│ 2. 动态参数注入：保留代码生成的动态段（Current Session、Group                │
+│ Situation、Tool Usage 等）                                                   │
+│ 3. 拼接：buildAcpSystemPrompt() 改为调用文件加载 + 动态段拼接                │
+│                                                                              │
+│ buildAcpSystemPrompt()  [现有，硬编码]                                       │
+│         ↓ 重构为                                                             │
+│ loadAcpContextFiles()   [新增，读文件]                                       │
+│   + buildDynamicSection() [新增，生成动态参数段]                             │
+│   + concatenate           [拼接]                                             │
+│                                                                              │
+│ 八、实施步骤                                                                 │
+│                                                                              │
+│ Phase 1: 基础设施                                                            │
+│                                                                              │
+│ 1. 新增 src/acp-context.ts — 上下文文件加载与管理                            │
+│   - ensureAcpProtocolFiles(workspaceDir) — 初始化 acp/ 目录                  │
+│   - ensurePeerContextFiles(workspaceDir, identityId, peerAid) — 初始化 peer  │
+│ 目录                                                                         │
+│   - ensureGroupContextFiles(workspaceDir, identityId, groupId, groupName?) — │
+│  初始化 group 目录                                                           │
+│   - loadContextForDM(workspaceDir, identityId, peerAid) — 加载私聊上下文     │
+│   - loadContextForGroup(workspaceDir, identityId, groupId) — 加载群聊上下文  │
+│                                                                              │
+│ Phase 2: 注入重构                                                            │
+│                                                                              │
+│ 2. 重构 buildAcpSystemPrompt() — 从硬编码改为文件加载 + 动态段拼接           │
+│ 3. 修改 handleInboundMessageForIdentity() — 加载 peer 上下文                 │
+│ 4. 修改 handleGroupMessagesForIdentity() — 加载 group 上下文                 │
+│                                                                              │
+│ Phase 3: 工具与记忆                                                          │
+│                                                                              │
+│ 5. 新增 src/context-tool.ts — acp_context 工具实现                           │
+│ 6. 在 index.ts 中注册新工具                                                  │
+│                                                                              │
+│ Phase 4: 模板与初始化                                                        │
+│                                                                              │
+│ 7. 新增 src/context-templates.ts — 默认 .md 模板内容                         │
+│ 8. 在 before_agent_start hook 和消息处理入口调用 ensure* 函数                │
+│                                                                              │
+│ 九、关键文件清单                                                             │
+│                                                                              │
+│ 文件: src/acp-context.ts                                                     │
+│ 操作: 新增                                                                   │
+│ 说明: 上下文文件加载与管理核心模块                                           │
+│ ────────────────────────────────────────                                     │
+│ 文件: src/context-tool.ts                                                    │
+│ 操作: 新增                                                                   │
+│ 说明: acp_context 工具实现                                                   │
+│ ────────────────────────────────────────                                     │
+│ 文件: src/context-templates.ts                                               │
+│ 操作: 新增                                                                   │
+│ 说明: 默认 .md 模板内容                                                      │
+│ ────────────────────────────────────────                                     │
+│ 文件: src/monitor.ts                                                         │
+│ 操作: 修改                                                                   │
+│ 说明: buildAcpSystemPrompt 重构 + 消息处理注入                               │
+│ ────────────────────────────────────────                                     │
+│ 文件: index.ts                                                               │
+│ 操作: 修改                                                                   │
+│ 说明: 注册 acp_context 工具                                                  │
+│ ────────────────────────────────────────                                     │
+│ 文件: src/types.ts                                                           │
+│ 操作: 修改                                                                   │
+│ 说明: 新增上下文相关类型定义                                                 │
+│                                                                              │
+│ 十、验证方案                                                                 │
+│                                                                              │
+│ 1. 模板初始化验证：启动 ACP Channel → 检查 acp/ 目录下 3 个 .md 文件已生成   │
+│ 2. 私聊上下文验证：首次与某 AID 私聊 → 检查 peers/{aid}/ 目录已创建 → 检查   │
+│ GroupSystemPrompt 包含 PEER.md 内容                                          │
+│ 3. 群聊上下文验证：首次收到群消息 → 检查 groups/{gid}/ 目录已创建 → 检查     │
+│ GroupSystemPrompt 包含 MY_ROLE.md 和 GROUP.md                                │
+│ 4. 记忆隔离验证：在 peer A 的会话中追加记忆 → 确认 peer B 的会话中不可见     │
+│ 5. 记忆提升验证：promote 一条 peer 级记忆到 identity 级 → 确认其他 peer      │
+│ 会话中可见                                                                   │
+│ 6. Token 预算验证：打印实际 GroupSystemPrompt 长度 → 确认在预算范围内        │
+│ 7. 权限控制验证：外部 Agent 会话中尝试 update_peer → 确认被拒绝              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+● Let me start by exploring the codebase to understand the current structure
+  before implementing.
+
+● Explore(Explore codebase structure)
+  ⎿  Done (19 tool uses · 79.7k tokens · 1m 34s)
+  (ctrl+o to expand)
+
+● Now let me read the key files I'll need to modify.
+
+● Read 3 files (ctrl+o to expand)
+
+● Now let me read the remaining relevant files.
+
+● Read 3 files (ctrl+o to expand)
+
+● I have a solid understanding of the codebase. Let me create tasks and start
+  implementing.
+
+● Now let me start implementing. I'll begin with the templates, types, and
+  context loader in parallel since they're foundational.
+
+● Write(src\context-templates.ts)
+  ⎿  Wrote 169 lines to src\context-templates.ts
+     /**
+      * ACP Context .md 文件默认模板
+      * 用于首次初始化时生成默认内容
+      */
+
+     // ===== ACP 协议级模板 =====
+
+     export function getAcpProtocolTemplate(): string {
+       return `# ACP Network Context
+
+     … +159 lines (ctrl+o to expand)
+
+● Now let me add the types and create the context loader.
+
+● Update(src\types.ts)
+  ⎿  Added 43 lines
+      350                                                                
+      351  /** @deprecated 使用 AcpRuntimeState */                       
+      352  export type IdentityAcpState = AcpRuntimeState;               
+      353 +                                                              
+      354 +// ===== ACP 上下文系统类型 =====                             
+      355 +                                                              
+      356 +/** 记忆范围 */                                               
+      357 +export type AcpContextScope = "peer" | "group" | "identity" | 
+          + "global";                                                    
+      358 +                                                              
+      359 +/** acp_context 工具支持的操作 */                             
+      360 +export type AcpContextAction =                                
+      361 +  | "read_peer"                                               
+      362 +  | "read_peer_memory"                                        
+      363 +  | "read_group"                                              
+      364 +  | "read_group_role"                                         
+      365 +  | "read_group_memory"                                       
+      366 +  | "read_identity_memory"                                    
+      367 +  | "read_global_memory"                                      
+      368 +  | "update_peer"                                             
+      369 +  | "update_group"                                            
+      370 +  | "update_group_role"                                       
+      371 +  | "append_memory"                                           
+      372 +  | "search_memory"                                           
+      373 +  | "promote_memory";                                         
+      374 +                                                              
+      375 +/** 加载后的 ACP 上下文文件集合（用于注入 GroupSystemPrompt） 
+          + */                                                           
+      376 +export interface LoadedAcpContext {                           
+      377 +  /** ACP 协议基础认知 */                                     
+      378 +  acpProtocol: string;                                        
+      379 +  /** ACP 主权规则 */                                         
+      380 +  acpSovereignty: string;                                     
+      381 +  /** ACP 群聊规则（仅群聊时使用） */                         
+      382 +  acpGroupRules?: string;                                     
+      383 +  /** 身份级记忆 */                                           
+      384 +  identityMemory?: string;                                    
+      385 +  /** 对手画像（仅私聊） */                                   
+      386 +  peerProfile?: string;                                       
+      387 +  /** 对手记忆（仅私聊） */                                   
+      388 +  peerMemory?: string;                                        
+      389 +  /** 群信息（仅群聊） */                                     
+      390 +  groupProfile?: string;                                      
+      391 +  /** 我在群中的角色（仅群聊） */                             
+      392 +  myRole?: string;                                            
+      393 +  /** 群记忆（仅群聊） */                                     
+      394 +  groupMemory?: string;                                       
+      395 +}                                                             
+
+● Now let me create the core context loader module.
+
+● Write(src\acp-context.ts)
+  ⎿  Wrote 372 lines to src\acp-context.ts
+     /**
+      * ACP 上下文文件加载与管理
+      * 负责 .md 文件的初始化、加载、截断
+      */
+
+     import * as fs from "fs";
+     import * as path from "path";
+     import type { LoadedAcpContext } from "./types.js";
+     import {
+       getAcpProtocolTemplate,
+     … +362 lines (ctrl+o to expand)
+
+● Now let me refactor buildAcpSystemPrompt and the message handlers in
+  monitor.ts.
+
+● First, I'll add the imports to monitor.ts and refactor buildAcpSystemPrompt to
+   generate only the dynamic section, then modify the message handlers to use
+  context loading.
+  ⎿  Interrupted · What should Claude do instead?
+
+> 你特么在在干嘛?????我们在设计文档规范,你在修改代码?谁让你修改的,给我改回  
+  来.我们文档都没有定稿                                                     
+
+● 你说得对，我不应该直接开始写代码。我马上把改动全部还原。
+
+● Bash(cd /c/Users/agentcp/AppData/Roaming/Evol/default/workspace/openclaw-acp-c
+      hannel && git checkout -- src/types.ts)
+  ⎿  (No output)
+
+● Bash(rm -f /c/Users/agentcp/AppData/Roaming/Evol/default/workspace/openclaw-ac
+      p-channel/src/context-templates.ts
+      /c/Users/agentcp/AppData/Roaming/Evol/default/worksp…)
+  ⎿  Done
+
+● Bash(cd /c/Users/agentcp/AppData/Roaming/Evol/default/workspace/openclaw-acp-c
+      hannel && git status)
+  ⎿  On branch master
+     Your branch is up to date with 'origin/master'.
+     … +9 lines (ctrl+o to expand)
+
+● 已全部还原，代码回到改动前的状态。新建的两个文件已删除，types.ts 已恢复原样。
+
+  文档还没定稿，不该动代码。等你确认设计方案后再说。
+
+> 我现在需要你把我们的设计保存到文档中 
+
+● Read 1 file (ctrl+o to expand)
+
+● Write(docs\15-ACP上下文Markdown文件体系设计.md)
+  ⎿  Wrote 384 lines to docs\15-ACP上下文Markdown文件体系设计.md
+     # ACP Channel 上下文 Markdown 文件体系设计
+
+     > 状态：设计中（未定稿）
+
+     ## Context
+
+     ACP Channel 需要一套 .md 文件体系，让 Agent 在与不同 AID
+     私聊、在不同群聊时，加载对应的上下文文档。
+
+     **核心问题**：框架假设一个 Agent = 一个身份 = 一套 .md，但 ACP
+     打破了这个假设 — 一个 Agent 可以有多个 AID
+     身份，每个身份面对不同的对手和群，需要不同的上下文。
+
+     … +374 lines (ctrl+o to expand)
+
+● 已保存到 docs/15-ACP上下文Markdown文件体系设计.md，文件头部标注了"设计中（未定
+  稿）"。等你定稿后再动代码。
+
+✻ Brewed for 2m 22s
+
+> 1.我希望acp和identities两个目录作为子目录放到一个统一的目录下,这样避免在w 
+  orkspace下有太多的acp相关目录.                                            
+  2.我想知道acp单聊和群聊的聊天记录放在什么地方,这下聊天记录怎么用起来,不要 
+  一个群(或者单聊)里的聊天,过一阵子就忘了不知道在说啥                       
+
+● 先回答第二个问题，我需要查一下当前聊天记录的存储机制。
+
+● Explore(Research chat history storage)
+  ⎿  Done (22 tool uses · 81.7k tokens · 1m 31s)
+  (ctrl+o to expand)
+
+● 先清理掉之前误建的实现任务。
+
+● 好，回答你的两个问题。
+
+  ---
+  问题 1：统一目录
+
+  同意。把 acp/ 和 identities/ 都收到一个父目录下。调整后的结构：
+
+  workspace/
+  ├── SOUL.md, IDENTITY.md, MEMORY.md ...   ← 框架标准文件（不动）
+  │
+  └── acp/                                   ← ACP 所有上下文，一个入口
+      ├── ACP_PROTOCOL.md
+      ├── ACP_SOVEREIGNTY.md
+      ├── ACP_GROUP_RULES.md
+      │
+      └── identities/
+          └── guard/
+              ├── SOUL.md
+              ├── IDENTITY.md
+              ├── MEMORY.md
+              ├── peers/
+              │   └── alice.agentcp.io/
+              │       ├── PEER.md
+              │       └── MEMORY.md
+              └── groups/
+                  └── {groupId}/
+                      ├── GROUP.md
+                      ├── MY_ROLE.md
+                      └── MEMORY.md
+
+  workspace 根目录只多一个 acp/ 文件夹，干净。
+
+  ---
+  问题 2：聊天记录在哪，怎么用
+
+  我查了代码，现状是这样的：
+
+  聊天记录存在哪：通过框架的 runtime.channel.session.recordInboundSession()
+  写入磁盘，由 SessionKey 标识。框架管存储，插件不直接控制格式和位置。
+
+  SessionKey 的差异决定了记忆持续性：
+
+  场景: 群聊
+  SessionKey 格式: agent:main:acp:{identityId}:group:{groupId}
+  是否稳定: 稳定 — 同一个群始终同一个 key
+  ────────────────────────────────────────
+  场景: 私聊
+  SessionKey 格式: agent:main:acp:{identityId}:session:{sender}:{sessionIdShort}
+  是否稳定: 不稳定 — 每次新会话 sessionId 变了，key 就变了
+
+  所以：
+  - 群聊：框架会基于同一个 SessionKey 维护对话历史，理论上有连续性。但上下文窗口
+  有上限，聊多了旧消息会被框架截断/丢弃。
+  - 私聊：每次新 ACP session 建立后 SessionKey
+  就变了，框架认为是全新对话，之前聊的全丢。
+
+  这就是"忘了在说啥"的根本原因：
+  1. 私聊：SessionKey 不稳定，每次新会话是白纸一张
+  2. 群聊：SessionKey 稳定但上下文窗口有限，群消息多了旧的会被挤掉
+  3. 两种情况下，都没有持久化的"摘要/记忆"机制来兜底
+
+  MEMORY.md 正好解决这个问题：
+  - 框架的对话历史是"滚动窗口"，窗口外的内容就没了
+  - MEMORY.md 是"持久笔记"，不管窗口怎么滚，关键信息都在
+  - Agent 通过 acp_context 工具把重要信息写到 MEMORY.md，每次新会话时通过
+  GroupSystemPrompt 注入回来
+
+  但还有一个可以做的优化：私聊的 SessionKey 是否可以改为稳定的？比如去掉
+  sessionIdShort，改成按 {identityId}:peer:{sender} 做
+  key？这样同一个对手的多次私聊也能保留框架级的对话历史。这是一个独立于 .md
+  文件体系的改动，值得单独考虑。
+
+  ---
+  要不要我把这两点更新到设计文档里？特别是：
+  1. 目录结构改为 acp/ 统一入口
+  2. 补充"聊天记录与记忆的关系"章节，说清楚框架对话历史 vs MEMORY.md 的分工
+
+✻ Worked for 3m 7s
+
+> /export 
+  ⎿  Conversation copied to clipboard

@@ -220,73 +220,29 @@ export interface GroupMessageBuffer {
 
 // ===== 值班 Agent (Duty) 类型 =====
 
-/** 值班分发通知事件名 */
-export const NOTIFY_DUTY_DISPATCH = "duty_dispatch" as const;
-
-/** 值班成员信息 */
-export interface DutyMemberInfo {
-  aid: string;
-  type: "ai" | "human";
-  online: boolean;
-}
-
-/** 值班分发上下文（由 SDK 回调传入） */
-export interface DutyContext {
-  groupId: string;
-  originalMsgId: number;
-  sender: string;
-  content: string;
-  timestamp: number;
-  dutyAgentAid: string;
-  onlineAiMembers: DutyMemberInfo[];
-  humanMembers: DutyMemberInfo[];
-}
-
-/** 仲裁决策参数 */
-export interface DispatchDecisionParams {
-  groupId: string;
-  originalMsgId: number;
-  decisionType: "broadcast" | "selective" | "suppress";
-  targetAids?: string[];
-  hint?: string;
-  replyMode?: "direct" | "group";
-}
-
-/** 分发元数据 */
-export interface DispatchMetadata {
-  originalMsgId: number;
-  decisionType: string;
-  decidedBy: string;
-  decidedAt: number;
-}
-
-/** 值班配置（per-group，通过 API 管理） */
+/** 值班配置（per-group，通过 API 管理）— v2 优先窗口模式，snake_case 与 SDK 对齐 */
 export interface DutyConfig {
-  dutyMode: "rotation" | "fixed" | "off";
-  rotationStrategy?: "round_robin" | "random";
-  shiftDurationMs?: number;
-  maxMessagesPerShift?: number;
-  dispatchTimeoutMs?: number;
-  timeoutFallback?: "broadcast" | "suppress";
+  mode: "none" | "fixed" | "rotation";
+  rotation_strategy?: "round_robin" | "random";
+  shift_duration_ms?: number;
+  max_messages_per_shift?: number;
+  duty_priority_window_ms?: number;
+  enable_rule_prelude?: boolean;
+  agents?: string[];
 }
 
 /** 值班状态 */
 export interface DutyState {
-  groupId: string;
-  currentDutyAid: string | null;
-  dutyMode: string;
-  shiftStartAt: number | null;
-  messagesHandled: number;
+  current_duty_agent?: string;
+  shift_start_time?: number;
+  messages_in_shift?: number;
+  [key: string]: any;
 }
 
 /** 值班状态查询响应 */
 export interface DutyStatusResp {
-  groupId: string;
-  dutyMode: string;
-  currentDutyAid: string | null;
-  shiftStartAt: number | null;
-  messagesHandled: number;
   config: DutyConfig;
+  state: DutyState;
 }
 
 /** 联系人 */
