@@ -30,6 +30,12 @@ const acpCapabilities = {
   reply: false,
 };
 
+// ownerAid 归一化：string | string[] | undefined → string[]
+function normalizeOwnerAid(raw: string | string[] | undefined): string[] {
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw.filter(Boolean) : raw ? [raw] : [];
+}
+
 // 配置适配器
 const acpConfigAdapter = {
   listAccountIds: (cfg: any): string[] => {
@@ -77,7 +83,7 @@ const acpConfigAdapter = {
         domain,
         fullAid: agentName ? `${agentName}.${domain}` : "",
         enabled: acpConfig?.enabled ?? false,
-        ownerAid: selectedIdentity.ownerAid ?? acpConfig?.ownerAid ?? "",
+        ownerAid: normalizeOwnerAid(selectedIdentity.ownerAid ?? acpConfig?.ownerAid),
         allowFrom: selectedIdentity.allowFrom ?? acpConfig?.allowFrom ?? [],
         seedPassword: selectedIdentity.seedPassword ?? acpConfig?.seedPassword ?? "",
         workspaceDir: selectedIdentity.workspaceDir ?? acpConfig?.workspaceDir,
@@ -99,7 +105,7 @@ const acpConfigAdapter = {
       domain,
       fullAid: agentName ? `${agentName}.${domain}` : "",
       enabled: acpConfig?.enabled ?? false,
-      ownerAid: acpConfig?.ownerAid ?? "",
+      ownerAid: normalizeOwnerAid(acpConfig?.ownerAid),
       allowFrom: acpConfig?.allowFrom ?? [],
       seedPassword: acpConfig?.seedPassword ?? "",
       workspaceDir: acpConfig?.workspaceDir,
@@ -166,7 +172,7 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
     },
     ownerAid: {
       label: "Owner AID",
-      help: "Owner's AID for privileged access (e.g., 'owner-name.agentcp.io')",
+      help: "Owner's AID(s) for privileged access — single string or array (e.g., 'owner-name.agentcp.io')",
       placeholder: "owner-name.agentcp.io",
     },
     allowFrom: {

@@ -44,7 +44,7 @@ export interface AcpIdentityEntry {
   agentName: string;        // Agent 名称 (不含域名)
   domain?: string;          // ACP 域名，如 agentcp.io
   seedPassword?: string;    // 种子密码
-  ownerAid?: string;        // 主人的 AID
+  ownerAid?: string | string[];  // 主人的 AID（支持单个或多个）
   allowFrom?: string[];     // 允许接收消息的 AID 列表
   agentMdPath?: string;     // agent.md 文件路径，登录后自动上传
   workspaceDir?: string;    // workspace 目录路径，用于自动生成 agent.md
@@ -67,7 +67,7 @@ export interface AcpChannelConfig {
   agentName?: string;       // Agent 名称 (不含域名)
   domain?: string;          // ACP 域名，如 agentcp.io
   seedPassword?: string;    // 种子密码
-  ownerAid?: string;        // 主人的 AID
+  ownerAid?: string | string[];  // 主人的 AID（支持单个或多个）
   allowFrom?: string[];     // 允许接收消息的 AID 列表
   agentMdPath?: string;     // agent.md 文件路径，登录后自动上传
   workspaceDir?: string;    // workspace 目录路径，用于自动生成 agent.md
@@ -118,7 +118,7 @@ export interface ResolvedAcpAccount {
   domain: string;
   fullAid: string;          // 完整 AID: agentName.domain
   enabled: boolean;
-  ownerAid: string;
+  ownerAid: string[];       // 主人的 AID 列表（解析后统一为数组）
   allowFrom: string[];
   seedPassword: string;
   workspaceDir?: string;

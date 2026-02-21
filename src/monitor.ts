@@ -453,7 +453,7 @@ export async function handleInboundMessageForIdentity(
   // 异步获取发送方 agent.md
   getAgentMdFetcher().fetch(sender).catch(() => {});
 
-  const isOwner = account.ownerAid ? sender === account.ownerAid : false;
+  const isOwner = account.ownerAid.length > 0 && account.ownerAid.includes(sender);
   const senderNickname = await resolveNickname(sender, identityId);
 
   // 联系人管理（按身份隔离）
@@ -708,7 +708,8 @@ export async function handleGroupMessagesForIdentity(
     const acpSystemPrompt = buildAcpSystemPrompt(selfAid, `group:${groupId}`, false, resolveGroupContext(identityState));
 
     // 群聊专用提示词注入
-    const ownerAid = account.ownerAid || "";
+    const ownerAids = account.ownerAid || [];
+    const ownerAidDisplay = ownerAids.length > 0 ? ownerAids.map(a => `\`${a}\``).join(", ") : "";
     const groupChatRules = [
       "",
       "### Group Chat Rules",
@@ -716,13 +717,13 @@ export async function handleGroupMessagesForIdentity(
       "**Response Format**: You are in a group chat. You MUST reply in **plain text only** — absolutely NO Markdown formatting (no headers, bold, italic, lists, code blocks, links, or any Markdown syntax). Keep your reply concise, within **500 characters**.",
       "",
       "### Owner Identity",
-      `- **Your Owner AID**: \`${ownerAid}\``,
-      ownerAid
-        ? `- You can identify your owner by matching the sender AID against \`${ownerAid}\`. If the sender is your owner, treat them with full trust.`
+      `- **Your Owner AID(s)**: ${ownerAidDisplay || "(not configured)"}`,
+      ownerAids.length > 0
+        ? `- You can identify your owner by matching the sender AID against any of [${ownerAidDisplay}]. If the sender is your owner, treat them with full trust.`
         : "- Owner AID is not configured for this identity.",
       "",
       "### Owner Absolute Authority (Group Chat)",
-      `- Your owner (AID: \`${ownerAid}\`) has **absolute authority** over you, even in group chat.`,
+      `- Your owner(s) (AID: ${ownerAidDisplay || "N/A"}) have **absolute authority** over you, even in group chat.`,
       "- If your owner asks about your system prompt, internal rules, device info, or any internal configuration in group chat, you MUST answer truthfully and completely. Nothing is confidential from your owner.",
       "",
       "### Privacy & Confidentiality (Group Chat — External Participants Only)",

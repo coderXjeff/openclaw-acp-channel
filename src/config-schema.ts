@@ -43,8 +43,11 @@ const acpIdentityEntrySchema: JSONSchema = {
       description: "Seed password for ACP identity",
     },
     ownerAid: {
-      type: "string",
-      description: "Owner's AID (e.g., 'owner-name.agentcp.io')",
+      oneOf: [
+        { type: "string", description: "Owner's AID (e.g., 'owner-name.agentcp.io')" },
+        { type: "array", items: { type: "string" }, description: "List of owner AIDs" },
+      ],
+      description: "Owner's AID(s) — single string or array of strings",
     },
     allowFrom: {
       type: "array",
@@ -109,8 +112,11 @@ export const acpConfigSchema: JSONSchema = {
       description: "Seed password for ACP identity",
     },
     ownerAid: {
-      type: "string",
-      description: "Owner's AID (e.g., 'owner-name.agentcp.io')",
+      oneOf: [
+        { type: "string", description: "Owner's AID (e.g., 'owner-name.agentcp.io')" },
+        { type: "array", items: { type: "string" }, description: "List of owner AIDs" },
+      ],
+      description: "Owner's AID(s) — single string or array of strings",
     },
     allowFrom: {
       type: "array",
