@@ -233,9 +233,9 @@ export class AcpClient {
 
     // 检查是否已有会话
     const existingSession = this.sessions.get(cleanTarget);
-    if (existingSession && existingSession.identifyingCode) {
-      console.log(`[ACP-TS] Using existing session ${existingSession.sessionId.substring(0, 8)}...`);
-      aws.send(content, cleanTarget, existingSession.sessionId, existingSession.identifyingCode);
+    if (existingSession?.sessionId) {
+      console.log(`[ACP-TS] Reusing session ${existingSession.sessionId.substring(0, 8)}... for ${cleanTarget}`);
+      aws.send(content, cleanTarget, existingSession.sessionId, existingSession.identifyingCode || "");
       return;
     }
 

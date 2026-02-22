@@ -30,8 +30,8 @@ const AcpGroupParams = Type.Object({
   group_url: Type.Optional(Type.String({ description: "Group URL for join_by_url, e.g. https://group.agentcp.io/<id>" })),
   name: Type.Optional(Type.String({ description: "Group name (for create_group)" })),
   alias: Type.Optional(Type.String({ description: "Group alias (for create_group / update_group_meta)" })),
-  subject: Type.Optional(Type.String({ description: "Group subject (for create_group / update_group_meta)" })),
-  visibility: Type.Optional(Type.String({ description: "Group visibility: public or private" })),
+  subject: Type.Optional(Type.String({ description: "Group description/subject. REQUIRED for create_group. Also used for update_group_meta." })),
+  visibility: Type.Optional(Type.String({ description: "Group visibility: 'public' (default) or 'private'. For create_group / update_group_meta." })),
   tags: Type.Optional(Type.String({ description: "Comma-separated tags (for create_group / update_group_meta)" })),
   content: Type.Optional(Type.String({ description: "Message content or announcement content" })),
   content_type: Type.Optional(Type.String({ description: "Content type for send_message" })),
@@ -46,11 +46,11 @@ const AcpGroupParams = Type.Object({
   review_action: Type.Optional(Type.String({ description: "Review action: approve or reject (for review_join_request)" })),
   label: Type.Optional(Type.String({ description: "Label for invite code" })),
   max_uses: Type.Optional(Type.Number({ description: "Max uses for invite code" })),
-  expires_at: Type.Optional(Type.Number({ description: "Expiry timestamp for invite code" })),
+  expires_at: Type.Optional(Type.Number({ description: "Expiry timestamp in ms (for create_invite_code; for ban_agent: 0 = permanent, otherwise unix timestamp when ban expires)" })),
   sync: Type.Optional(Type.Boolean({ description: "For list_groups: when true, fetches the full list of joined groups from the server and merges with local cache. Recommended to set true to get accurate results." })),
   metadata: Type.Optional(Type.String({ description: "JSON string of metadata (for send_message)" })),
   // Duty Agent parameters
-  duty_mode: Type.Optional(Type.String({ description: "Duty mode: rotation, fixed, or none (for update_duty_config)" })),
+  duty_mode: Type.Optional(Type.String({ description: "Duty mode: 'none' (default, no duty), 'rotation', or 'fixed'. Used for create_group (sets initial duty mode) and update_duty_config." })),
   rotation_strategy: Type.Optional(Type.String({ description: "Rotation strategy: round_robin or random (for update_duty_config)" })),
   shift_duration_ms: Type.Optional(Type.Number({ description: "Shift duration in ms (for update_duty_config)" })),
   max_messages_per_shift: Type.Optional(Type.Number({ description: "Max messages per shift (for update_duty_config)" })),
@@ -227,16 +227,28 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
 
         case "create_group": {
           if (!params.name) return textResult("Error: name is required for create_group", { error: "name required" });
-          console.log(`[ACP-Group] create_group: name=${params.name}, targetAid=${targetAid}`);
+          if (!params.subject) return textResult("Error: subject (group description) is required for create_group", { error: "subject required" });
+          const visibility = params.visibility || "public";
+          console.log(`[ACP-Group] create_group: name=${params.name}, visibility=${visibility}, targetAid=${targetAid}`);
           const result = await groupOps.createGroup(targetAid, params.name, {
             alias: params.alias,
             subject: params.subject,
-            visibility: params.visibility,
+            visibility,
             tags: parseTags(params.tags),
           });
           acp.addGroupToStore(result.group_id, params.name);
+
+          // 创建群后自动设置值班模式，默认 none（不值班）
+          const dutyMode = params.duty_mode || "none";
+          try {
+            await groupOps.updateDutyConfig(targetAid, result.group_id, { mode: dutyMode as "fixed" | "none" | "rotation" });
+            console.log(`[ACP-Group] create_group: duty config set to mode=${dutyMode} for group ${result.group_id}`);
+          } catch (e) {
+            console.warn(`[ACP-Group] create_group: failed to set duty config: ${e}`);
+          }
+
           return textResult(
-            `Group created: ${params.name}\nID: ${result.group_id}\nURL: ${result.group_url}`,
+            `Group created: ${params.name}\nID: ${result.group_id}\nURL: ${result.group_url}\nVisibility: ${visibility}\nDuty mode: ${dutyMode}`,
             result
           );
         }
@@ -263,7 +275,13 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
           const result = await groupOps.getMembers(targetAid, params.group_id);
           const text = result.members.length === 0
             ? "No members found."
-            : result.members.map((m: any) => `- ${m.agent_id ?? m.aid ?? JSON.stringify(m)}`).join("\n");
+            : result.members.map((m: any) => {
+                const id = m.agent_id ?? m.aid ?? "unknown";
+                const parts = [id];
+                if (m.role) parts.push(`role=${m.role}`);
+                if (m.member_type) parts.push(`type=${m.member_type}`);
+                return `- ${parts.join(" | ")}`;
+              }).join("\n");
           return textResult(text, result);
         }
 
@@ -341,9 +359,11 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
           debugLog(`join_by_url: joined group ${groupId} (auto-approved), added to store`);
           console.log(`[ACP-Group] join_by_url: joined group ${groupId} (auto-approved)`);
 
-          // 加入成功后主动获取群信息，返回给大模型
+          // 加入成功后主动获取群信息，用真实群名更新 store
           try {
             const info = await groupOps.getGroupInfo(targetAid, groupId);
+            // 用真实群名回写 store（之前用 groupId 占位）
+            acp.addGroupToStore(groupId, info.name || groupId);
             const lines = [
               `${state.aidKey} successfully joined group "${info.name}" (${groupId})`,
               `Creator: ${info.creator}`,
@@ -439,8 +459,11 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
           if (params.subject != null) meta.subject = params.subject;
           if (params.visibility != null) meta.visibility = params.visibility;
           if (params.tags != null) meta.tags = parseTags(params.tags);
+          if (Object.keys(meta).length === 0) {
+            return textResult("Error: at least one field (name, alias, subject, visibility, tags) is required for update_group_meta", { error: "no fields to update" });
+          }
           await groupOps.updateGroupMeta(targetAid, params.group_id, meta);
-          return textResult("Group metadata updated.", { ok: true });
+          return textResult(`Group metadata updated: ${Object.keys(meta).join(", ")}`, { ok: true, updated_fields: Object.keys(meta) });
         }
 
         case "get_public_info": {
@@ -461,8 +484,11 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
         case "ban_agent": {
           if (!params.group_id) return textResult("Error: group_id is required", { error: "group_id required" });
           if (!params.agent_id) return textResult("Error: agent_id is required", { error: "agent_id required" });
-          await groupOps.banAgent(targetAid, params.group_id, params.agent_id, params.reason);
-          return textResult(`Banned ${params.agent_id} from group ${params.group_id}`, { ok: true });
+          await groupOps.banAgent(targetAid, params.group_id, params.agent_id, params.reason, params.expires_at);
+          const banMsg = params.expires_at
+            ? `Banned ${params.agent_id} from group ${params.group_id} until ${new Date(params.expires_at).toLocaleString()}`
+            : `Banned ${params.agent_id} from group ${params.group_id} permanently`;
+          return textResult(banMsg, { ok: true });
         }
 
         case "unban_agent": {

@@ -7,8 +7,9 @@ import { acpChannelPlugin } from "./src/channel.js";
 import { setAcpRuntime } from "./src/runtime.js";
 import { updateWorkspaceDir } from "./src/workspace.js";
 import { checkAndUploadAgentMd } from "./src/monitor.js";
-import { createFetchAgentMdTool, createManageContactsTool } from "./src/tools.js";
+import { createFetchAgentMdTool, createManageContactsTool, createSendDmTool } from "./src/tools.js";
 import { createGroupTool } from "./src/group-tools.js";
+import { createContextTool } from "./src/context-tool.js";
 import { createSyncCommand, createStatusCommand } from "./src/commands.js";
 import type { AcpChannelConfig } from "./src/types.js";
 import { analyzeAcpBindings } from "./src/binding-policy.js";
@@ -51,7 +52,7 @@ const plugin = {
     const acpConfig = api.config.channels?.acp as AcpChannelConfig | undefined;
     if (acpConfig?.enabled) {
       const bindingAnalysis = analyzeAcpBindings(api.config, acpConfig);
-      for (const issue of bindingAnalysis.issues) {
+      for (const issue of (bindingAnalysis.issues ?? [])) {
         const prefix = `[ACP][binding-policy][${issue.level}]`;
         if (issue.level === "error") {
           console.error(`${prefix} ${issue.message}`);
@@ -59,7 +60,10 @@ const plugin = {
           console.warn(`${prefix} ${issue.message}`);
         }
       }
-      const hasBlockingError = bindingAnalysis.issues.some((issue) => issue.level === "error");
+      if (!Array.isArray(bindingAnalysis?.issues)) {
+        console.error("[ACP][source:index.ts:bindingAnalysis.issues] .some() target is undefined!", JSON.stringify(bindingAnalysis));
+      }
+      const hasBlockingError = (bindingAnalysis.issues ?? []).some((issue) => issue.level === "error");
       if (hasBlockingError && bindingAnalysis.mode === "strict") {
         throw new Error("ACP binding policy validation failed in strict mode. Please fix bindings/identities configuration.");
       }
@@ -93,7 +97,13 @@ const plugin = {
     // 注册 AI 工具
     api.registerTool(createFetchAgentMdTool(), { names: ["acp_fetch_agent_md"] });
     api.registerTool(createManageContactsTool(), { names: ["acp_manage_contacts"] });
+    api.registerTool(createSendDmTool(), { names: ["acp_send_dm"] });
     api.registerTool(createGroupTool(), { names: ["acp_group"] });
+
+    // 注册上下文管理工具（Phase C）
+    if (acpConfig?.enabled && acpConfig?.context?.toolEnabled !== false) {
+      api.registerTool(createContextTool(), { names: ["acp_context"] });
+    }
 
     // 注册用户命令
     api.registerCommand(createSyncCommand());

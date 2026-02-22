@@ -2,6 +2,7 @@ import type { AcpSessionState } from "./types.js";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import { getAcpRuntime, hasAcpRuntime } from "./runtime.js";
 import { getContactManager } from "./contacts.js";
+import { buildDmSessionKey } from "./acp-session-key.js";
 
 /** AI 评价结果 */
 export interface AiSessionRating {
@@ -202,11 +203,8 @@ export function mergeSessionScore(ruleScore: number, aiRating: AiSessionRating |
 export async function rateSession(state: AcpSessionState, cfg: OpenClawConfig, identityId?: string): Promise<void> {
   try {
     const ruleBreakdown = calculateSessionScore(state);
-    const sessionIdShort = state.sessionId.substring(0, 8);
     const agentId = "main";
-    const sessionKey = identityId && identityId !== "default"
-      ? `agent:${agentId}:acp:${identityId}:session:${state.targetAid}:${sessionIdShort}`
-      : `agent:${agentId}:acp:session:${state.targetAid}:${sessionIdShort}`;
+    const sessionKey = buildDmSessionKey({ agentId, identityId: identityId ?? "default", peerAid: state.targetAid });
 
     console.log(
       `[ACP] Session ${state.sessionId} rule score: ${ruleBreakdown.total} ` +

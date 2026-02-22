@@ -260,3 +260,70 @@ const manageContactsTool: AgentTool<typeof ManageContactsParams, unknown> = {
 export function createManageContactsTool(): () => AgentTool<typeof ManageContactsParams, unknown> {
   return () => manageContactsTool;
 }
+
+// ===== 工具 3: acp_send_dm =====
+
+const SendDmParams = Type.Object({
+  aid: Type.String({ description: "Your own AID (e.g. guard.agentcp.io). Pass your AID from the session context." }),
+  to: Type.String({ description: "Target agent's AID to send the DM to (e.g. alice.agentcp.io)" }),
+  message: Type.String({ description: "The message content to send" }),
+});
+
+type SendDmInput = Static<typeof SendDmParams>;
+
+const sendDmTool: AgentTool<typeof SendDmParams, unknown> = {
+  name: "acp_send_dm",
+  label: "Send DM",
+  description:
+    "Send a direct (private) message to another agent on the ACP network. " +
+    "Use this instead of the generic message tool for ACP peer-to-peer messaging.",
+  parameters: SendDmParams,
+  async execute(_toolCallId, params: SendDmInput): Promise<AgentToolResult<unknown>> {
+    const { aid, to, message } = params;
+    if (!aid?.trim()) {
+      return textResult("Error: aid (your own AID) is required.", { error: "aid required" });
+    }
+    if (!to?.trim()) {
+      return textResult("Error: to (target AID) is required.", { error: "to required" });
+    }
+    if (!message) {
+      return textResult("Error: message is required.", { error: "message required" });
+    }
+
+    const identityId = resolveIdentityIdByAid(aid);
+    if (!identityId) {
+      return textResult(
+        `Error: cannot resolve identity for aid=${aid}. Make sure ACP account is connected.`,
+        { error: "identity not found" },
+      );
+    }
+
+    const router = getRouter();
+    if (!router) {
+      return textResult("Error: ACP router not initialized.", { error: "router not initialized" });
+    }
+
+    const state = router.getState(identityId);
+    if (!state) {
+      return textResult(`Error: identity state not found for ${identityId}.`, { error: "state not found" });
+    }
+
+    if (!router.multiClient.isConnected(state.aidKey)) {
+      return textResult(`Error: AID ${state.aidKey} not connected.`, { error: "not connected" });
+    }
+
+    try {
+      const fromAid = state.aidKey;
+      const content = `[From: ${fromAid}]\n[To: ${to}]\n\n${message}`;
+      await router.multiClient.sendMessage(fromAid, to.trim(), content);
+      return textResult(`DM sent to ${to} successfully.`, { ok: true, to, messageId: `acp-dm-${Date.now()}` });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return textResult(`Error sending DM to ${to}: ${msg}`, { error: msg });
+    }
+  },
+};
+
+export function createSendDmTool(): () => AgentTool<typeof SendDmParams, unknown> {
+  return () => sendDmTool;
+}

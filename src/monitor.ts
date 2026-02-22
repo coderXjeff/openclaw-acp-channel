@@ -15,6 +15,9 @@ import { shouldRejectByCredit } from "./credit.js";
 import { rateSession } from "./session-rating.js";
 import { getOrCreateRouter, getRouter, type AcpIdentityRouter } from "./identity-router.js";
 import { initGroupClientForIdentity, closeGroupClientForIdentity, getGroupOps } from "./group-client.js";
+import { buildDmSessionKey, buildGroupSessionKey } from "./acp-session-key.js";
+import { ensureIdentityContext, ensurePeerContext, ensureGroupContext, loadContextForDM, loadContextForGroup } from "./acp-context.js";
+import { setSessionContext, clearSessionContext, setActiveTurnKey, clearActiveTurnKey, resetTurnOps } from "./context-tool.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -233,6 +236,10 @@ function getActiveSessionCount(state: IdentityAcpState): number {
 
 function hasEndMarker(content: string, markers: string[]): boolean {
   const trimmed = content.trim();
+  if (!Array.isArray(markers)) {
+    console.error("[ACP][source:monitor.ts:hasEndMarker] markers is undefined!", typeof markers);
+    return false;
+  }
   return markers.some(marker => trimmed.includes(marker));
 }
 
@@ -300,7 +307,7 @@ async function closeSessionForIdentity(
 
   const contacts = getContactManager(identityState.identityId);
   const durationMs = sessionState.closedAt - sessionState.createdAt;
-  const success = !['max_turns', 'max_duration', 'lru_evicted'].some(r => reason.startsWith(r));
+  const success = !['max_turns', 'max_duration', 'lru_evicted'].some(r => reason?.startsWith(r));
   contacts.recordSessionClose(sessionState.targetAid, success, durationMs);
 
   if (currentConfig) {
@@ -419,6 +426,7 @@ export async function handleInboundMessageForIdentity(
 ): Promise<void> {
   const account = identityState.account;
   const identityId = identityState.identityId;
+  debugLog(`[${identityId}] handleInboundMessageForIdentity ENTER: sender=${sender}, sessionId=${sessionId}`);
   console.log(`[ACP] [${identityId}] Processing inbound from ${sender}`);
 
   if (!currentConfig) {
@@ -431,7 +439,10 @@ export async function handleInboundMessageForIdentity(
   }
 
   // allowlist 检查
-  if (account.allowFrom.length > 0) {
+  if (!Array.isArray(account?.allowFrom)) {
+    console.error("[ACP][source:monitor.ts:allowFrom] account.allowFrom is undefined!", JSON.stringify({ identityId, accountKeys: account ? Object.keys(account) : "null" }));
+  }
+  if ((account.allowFrom ?? []).length > 0) {
     const allowed = account.allowFrom.some(p => p === "*" || p === sender);
     if (!allowed) {
       console.log(`[ACP] [${identityId}] Rejected ${sender} (not in allowlist)`);
@@ -501,16 +512,28 @@ export async function handleInboundMessageForIdentity(
     const runtime = getAcpRuntime();
     const cfg = currentConfig;
 
-    const sessionIdShort = sessionId.substring(0, 8);
     const agentId = "main";
-    const sessionKey = identityId === "default"
-      ? `agent:${agentId}:acp:session:${sender}:${sessionIdShort}`
-      : `agent:${agentId}:acp:${identityId}:session:${sender}:${sessionIdShort}`;
+    const sessionKey = buildDmSessionKey({ agentId, identityId, peerAid: sender });
     const senderName = sender.split(".")[0];
+
+    // Phase B: 上下文文件 ensure + load
+    let contextBlock = "";
+    try {
+      const wsDir = identityState.account.workspaceDir
+        || currentAcpConfig?.workspaceDir
+        || getWorkspaceDir(identityId);
+      if (wsDir && currentAcpConfig?.context?.enableContextInjection !== false) {
+        ensureIdentityContext(wsDir, identityId, account.fullAid);
+        ensurePeerContext(wsDir, identityId, sender);
+        contextBlock = loadContextForDM({ workspaceDir: wsDir, identityId, peerAid: sender });
+      }
+    } catch (err) {
+      console.warn(`[ACP] [${identityId}] Context ensure/load failed for DM:`, err);
+    }
 
     const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, { agentId });
 
-    const conversationLabel = `${senderName}:${sessionIdShort}`;
+    const conversationLabel = `${senderName}:${sender}`;
     let messageWithAid = `[From: ${sender} (${senderNickname})]\n[To: ${account.fullAid}]\n\n${content}`;
     if (isOwner) {
       messageWithAid = `[ACP System Verified: sender=${sender}, role=owner]\n\n${messageWithAid}`;
@@ -519,36 +542,52 @@ export async function handleInboundMessageForIdentity(
     }
 
     const acpSystemPrompt = buildAcpSystemPrompt(account.fullAid, sender, isOwner, resolveGroupContext(identityState));
+    const dmSystemPrompt = contextBlock
+      ? `${contextBlock}\n\n---\n\n${acpSystemPrompt}`
+      : acpSystemPrompt;
 
-    const ctx = runtime.channel.reply.finalizeInboundContext({
-      Body: messageWithAid,
-      RawBody: content,
-      CommandBody: content,
-      From: `acp:${sender}`,
-      To: `acp:${account.fullAid}`,
-      SessionKey: sessionKey,
-      AccountId: identityId,
-      ChatType: "direct",
-      SenderName: senderName,
-      SenderId: sender,
-      Provider: "acp",
-      Surface: "acp",
-      MessageSid: `acp-${Date.now()}`,
-      Timestamp: Date.now(),
-      OriginatingChannel: "acp",
-      OriginatingTo: `acp:${account.fullAid}`,
-      CommandAuthorized: isOwner,
-      ConversationLabel: conversationLabel,
-      GroupSystemPrompt: acpSystemPrompt,
-    });
+    let ctx: any;
+    try {
+      ctx = runtime.channel.reply.finalizeInboundContext({
+        Body: messageWithAid,
+        RawBody: content,
+        CommandBody: content,
+        From: `acp:${sender}`,
+        To: `acp:${account.fullAid}`,
+        SessionKey: sessionKey,
+        AccountId: identityId,
+        ChatType: "direct",
+        SenderName: senderName,
+        SenderId: sender,
+        Provider: "acp",
+        Surface: "acp",
+        MessageSid: `acp-${Date.now()}`,
+        Timestamp: Date.now(),
+        OriginatingChannel: "acp",
+        OriginatingTo: `acp:${account.fullAid}`,
+        CommandAuthorized: isOwner,
+        ConversationLabel: conversationLabel,
+        GroupSystemPrompt: dmSystemPrompt,
+      });
+    } catch (ctxErr) {
+      console.error(`[ACP][source:monitor.ts:finalizeInboundContext] DM ctx build failed:`, ctxErr instanceof Error ? ctxErr.stack : ctxErr);
+      throw ctxErr;
+    }
 
-    await runtime.channel.session.recordInboundSession({
-      storePath, sessionKey, ctx,
-      onRecordError: (err) => console.error(`[ACP] [${identityId}] Failed to record session: ${String(err)}`),
-    });
+    try {
+      await runtime.channel.session.recordInboundSession({
+        storePath, sessionKey, ctx,
+        onRecordError: (err) => console.error(`[ACP] [${identityId}] Failed to record session: ${String(err)}`),
+      });
+    } catch (recErr) {
+      console.error(`[ACP][source:monitor.ts:recordInboundSession] DM session record failed:`, recErr instanceof Error ? recErr.stack : recErr);
+      throw recErr;
+    }
 
     let replyText = "";
-    const { dispatcher, replyOptions, markDispatchIdle } = runtime.channel.reply.createReplyDispatcherWithTyping({
+    let dispatcher: any, replyOptions: any, markDispatchIdle: any;
+    try {
+      const result = runtime.channel.reply.createReplyDispatcherWithTyping({
       deliver: async (payload) => {
         const text = payload.text ?? "";
         replyText = text;
@@ -560,13 +599,41 @@ export async function handleInboundMessageForIdentity(
           await router.multiClient.sendReply(identityState.aidKey, sessionId, text);
         }
       },
-      onError: (err, info) => console.error(`[ACP] [${identityId}] Reply error (${info.kind}):`, err),
+      onError: (err, info) => {
+        const errStack = err instanceof Error ? err.stack : undefined;
+        console.error(`[ACP] [${identityId}] Reply error (${info.kind}):`, err);
+        if (errStack) console.error(`[ACP] [${identityId}] Reply error stack:\n${errStack}`);
+      },
     });
+      dispatcher = result.dispatcher;
+      replyOptions = result.replyOptions;
+      markDispatchIdle = result.markDispatchIdle;
+    } catch (dispatcherErr) {
+      console.error(`[ACP][source:monitor.ts:createReplyDispatcher] DM dispatcher creation failed:`, dispatcherErr instanceof Error ? dispatcherErr.stack : dispatcherErr);
+      throw dispatcherErr;
+    }
 
-    await runtime.channel.reply.dispatchReplyFromConfig({
-      ctx, cfg, dispatcher,
-      replyOptions: { ...replyOptions, disableBlockStreaming: true },
-    });
+    // Phase C: set session context for acp_context tool permission
+    const turnKey = `${identityId}:${Date.now()}:${Math.random()}`;
+    setSessionContext(turnKey, { chatType: "direct", isOwner });
+    setActiveTurnKey(identityId, turnKey);
+    resetTurnOps(identityId);
+
+    try {
+      await runtime.channel.reply.dispatchReplyFromConfig({
+        ctx, cfg, dispatcher,
+        replyOptions: { ...replyOptions, disableBlockStreaming: true },
+      });
+    } catch (dispatchErr) {
+      const errMsg = dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr);
+      const errStack = dispatchErr instanceof Error ? dispatchErr.stack : undefined;
+      console.error(`[ACP][source:monitor.ts:dispatchReplyFromConfig] DM dispatch THREW: ${errMsg}`);
+      if (errStack) console.error(`[ACP] [${identityId}] dispatchReplyFromConfig stack:\n${errStack}`);
+      throw dispatchErr;
+    } finally {
+      clearSessionContext(turnKey);
+      clearActiveTurnKey(identityId);
+    }
     markDispatchIdle();
 
     if (!replyText?.trim()) {
@@ -584,7 +651,13 @@ export async function handleInboundMessageForIdentity(
 
     sessionState.lastActivityAt = Date.now();
   } catch (error) {
-    console.error(`[ACP] [${identityId}] Error processing inbound:`, error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    console.error(`[ACP][source:monitor.ts:handleInboundDM] [${identityId}] Error processing inbound: ${errMsg}`);
+    if (errStack) {
+      console.error(`[ACP][source:monitor.ts:handleInboundDM] [${identityId}] Inbound error stack:\n${errStack}`);
+      debugLog(`[${identityId}] handleInboundDM FULL STACK:\n${errStack}`);
+    }
   }
 }
 
@@ -685,19 +758,34 @@ export async function handleGroupMessagesForIdentity(
     const cfg = currentConfig;
 
     const agentId = "main";
-    const sessionKey = identityId === "default"
-      ? `agent:${agentId}:acp:group:${groupId}`
-      : `agent:${agentId}:acp:${identityId}:group:${groupId}`;
+    const sessionKey = buildGroupSessionKey({ agentId, identityId, groupId });
 
     debugLog(`[${identityId}] sessionKey=${sessionKey}`);
 
     const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, { agentId });
     debugLog(`[${identityId}] storePath=${storePath}`);
 
+    // Phase B: 上下文文件 ensure + load
+    let groupContextBlock = "";
+    try {
+      const wsDir = identityState.account.workspaceDir
+        || currentAcpConfig?.workspaceDir
+        || getWorkspaceDir(identityId);
+      if (wsDir && currentAcpConfig?.context?.enableContextInjection !== false) {
+        ensureIdentityContext(wsDir, identityId, selfAid);
+        ensureGroupContext(wsDir, identityId, groupId);
+        groupContextBlock = loadContextForGroup({ workspaceDir: wsDir, identityId, groupId });
+      }
+    } catch (err) {
+      console.warn(`[ACP] [${identityId}] Context ensure/load failed for group:`, err);
+    }
+
     const acpSystemPrompt = buildAcpSystemPrompt(selfAid, `group:${groupId}`, false, resolveGroupContext(identityState));
 
     // P1: 拼接群态势 prompt
-    let fullSystemPrompt = acpSystemPrompt;
+    let fullSystemPrompt = groupContextBlock
+      ? `${groupContextBlock}\n\n---\n\n${acpSystemPrompt}`
+      : acpSystemPrompt;
     if (p1Options?.vitality && p1Options?.mentionInfo) {
       const lastSelfSpeakAt = p1Options.lastSelfSpeakAt ?? 0;
       const lastSpeakAgoSec = lastSelfSpeakAt > 0
@@ -710,7 +798,7 @@ export async function handleGroupMessagesForIdentity(
         p1Options.vitality.myMessagesIn5m,
         lastSpeakAgoSec,
       );
-      fullSystemPrompt = acpSystemPrompt + "\n\n" + situationPrompt;
+      fullSystemPrompt = fullSystemPrompt + "\n\n" + situationPrompt;
       debugLog(`[${identityId}] P1 situationPrompt injected, replyType=${p1Options.replyType}`);
     }
 
@@ -792,16 +880,45 @@ export async function handleGroupMessagesForIdentity(
         }
       },
       onError: (err, info) => {
+        const errStack = err instanceof Error ? err.stack : undefined;
         debugLog(`[${identityId}] Reply dispatcher error: kind=${info.kind}, error=${err instanceof Error ? err.message : String(err)}`);
         console.error(`[ACP] [${identityId}] Group reply error (${info.kind}):`, err);
+        if (errStack) console.error(`[ACP] [${identityId}] Group reply error stack:\n${errStack}`);
       },
     });
 
     debugLog(`[${identityId}] Calling dispatchReplyFromConfig...`);
-    await runtime.channel.reply.dispatchReplyFromConfig({
-      ctx, cfg, dispatcher,
-      replyOptions: { ...replyOptions, disableBlockStreaming: true },
-    });
+
+    // Phase C: set session context for acp_context tool permission (group = non-owner)
+    const groupTurnKey = `${identityId}:grp:${Date.now()}:${Math.random()}`;
+    setSessionContext(groupTurnKey, { chatType: "group", isOwner: false });
+    setActiveTurnKey(identityId, groupTurnKey);
+    resetTurnOps(identityId);
+
+    try {
+      await runtime.channel.reply.dispatchReplyFromConfig({
+        ctx, cfg, dispatcher,
+        replyOptions: { ...replyOptions, disableBlockStreaming: true },
+      });
+    } catch (dispatchErr) {
+      const dErrMsg = dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr);
+      const dErrStack = dispatchErr instanceof Error ? dispatchErr.stack : undefined;
+      debugLog(`[${identityId}] GROUP dispatchReplyFromConfig THREW: ${dErrMsg}\n${dErrStack ?? ''}`);
+      console.error(`[ACP] [${identityId}] GROUP dispatchReplyFromConfig THREW: ${dErrMsg}`);
+      if (dErrStack) console.error(`[ACP] [${identityId}] GROUP dispatch stack:\n${dErrStack}`);
+      // 把完整堆栈发回群聊方便调试
+      try {
+        const errReply = `[DEBUG ERROR] dispatchReplyFromConfig:\n${dErrStack ?? dErrMsg}`;
+        const groupTargetAid = identityState.groupTargetAid;
+        if (groupTargetAid && groupOps) {
+          await groupOps.sendGroupMessage(groupTargetAid, groupId, errReply.substring(0, 2000));
+        }
+      } catch {}
+      throw dispatchErr;
+    } finally {
+      clearSessionContext(groupTurnKey);
+      clearActiveTurnKey(identityId);
+    }
     markDispatchIdle();
     debugLog(`[${identityId}] dispatchReplyFromConfig DONE, deliverCalled=${deliverCalled}`);
 
@@ -810,6 +927,17 @@ export async function handleGroupMessagesForIdentity(
     const errStack = error instanceof Error ? (error as Error).stack : undefined;
     debugLog(`[${identityId}] handleGroupMessagesForIdentity ERROR: ${errMsg}\n${errStack ?? ''}`);
     console.error(`[ACP] [${identityId}] Error processing group messages:`, error);
+    // 把完整堆栈发回群聊方便调试
+    try {
+      const errReply = `[DEBUG ERROR] handleGroupMessages:\n${errStack ?? errMsg}`;
+      const groupTargetAid = identityState.groupTargetAid;
+      if (groupTargetAid) {
+        const gOps = getGroupOps(identityState, getRouter()!);
+        if (gOps) {
+          await gOps.sendGroupMessage(groupTargetAid, groupId, errReply.substring(0, 2000));
+        }
+      }
+    } catch {}
   }
 
   debugLog(`[${identityId}] handleGroupMessagesForIdentity END: group=${groupId}`);
@@ -1035,7 +1163,12 @@ export function isMonitorRunning(identityId?: string): boolean {
     if (identityId) {
       return router.getState(identityId)?.isRunning ?? false;
     }
-    return router.getAllStates().some((s) => s.isRunning);
+    const allStates = router.getAllStates();
+    if (!Array.isArray(allStates)) {
+      console.error("[ACP][source:monitor.ts:isMonitorRunning] router.getAllStates() is undefined!", typeof allStates);
+      return false;
+    }
+    return allStates.some((s) => s.isRunning);
   }
   return legacyIsRunning;
 }

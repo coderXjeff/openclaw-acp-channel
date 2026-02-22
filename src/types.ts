@@ -82,6 +82,14 @@ export interface AcpChannelConfig {
   identities?: Record<string, AcpIdentityEntry>;
   // P1 群社交行为配置
   groupSocial?: GroupSocialConfig;
+  // 上下文文件体系配置
+  context?: AcpContextConfig;
+}
+
+// 上下文文件体系配置
+export interface AcpContextConfig {
+  enableContextInjection?: boolean;  // 只读注入开关，默认 true
+  toolEnabled?: boolean;             // acp_context 工具开关，默认 true
 }
 
 // 会话终止控制配置

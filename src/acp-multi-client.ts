@@ -243,8 +243,9 @@ export class AcpMultiClient {
 
     const agentWs = instance.agentWS;
     const existingSession = instance.sessions.get(cleanTarget);
-    if (existingSession?.identifyingCode) {
-      agentWs.send(content, cleanTarget, existingSession.sessionId, existingSession.identifyingCode);
+    if (existingSession?.sessionId) {
+      console.log(`[ACP-Multi] Reusing session ${existingSession.sessionId.substring(0, 8)}... for ${cleanTarget}`);
+      agentWs.send(content, cleanTarget, existingSession.sessionId, existingSession.identifyingCode || "");
       return;
     }
 

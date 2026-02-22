@@ -169,7 +169,10 @@ function feedBufferGate(
 
   // P1: 提及加速路径
   if (socialCfg.enabled) {
-    const hasMention = buffer.incomingMessages.some(m => m.isMention);
+    if (!Array.isArray(buffer?.incomingMessages)) {
+      console.error("[ACP][source:group-client.ts:feedBufferGate] buffer.incomingMessages is undefined!", typeof buffer?.incomingMessages);
+    }
+    const hasMention = (buffer.incomingMessages ?? []).some(m => m.isMention);
     if (hasMention) {
       debugLog(`[${identityId}] feedBufferGate: MENTION detected in group=${groupId}`);
 
