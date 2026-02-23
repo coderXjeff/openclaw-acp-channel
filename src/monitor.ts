@@ -18,6 +18,7 @@ import { initGroupClientForIdentity, closeGroupClientForIdentity, getGroupOps } 
 import { buildDmSessionKey, buildGroupSessionKey } from "./acp-session-key.js";
 import { ensureIdentityContext, ensurePeerContext, ensureGroupContext, loadContextForDM, loadContextForGroup } from "./acp-context.js";
 import { setSessionContext, clearSessionContext, setActiveTurnKey, clearActiveTurnKey, resetTurnOps } from "./context-tool.js";
+import { triggerUpgradeCheck } from "./auto-upgrade.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -368,9 +369,7 @@ export async function checkAndUploadAgentMdForIdentity(identityState: IdentityAc
   if (!router) return;
 
   const aid = identityState.aidKey;
-  const wsDir = identityState.account.workspaceDir
-    || currentAcpConfig?.workspaceDir
-    || getWorkspaceDir(identityState.identityId);
+  const wsDir = getWorkspaceDir(identityState.identityId);
 
   if (wsDir) {
     console.log(`[ACP] [${identityState.identityId}] Generating agent.md from workspace: ${wsDir}`);
@@ -424,6 +423,7 @@ export async function handleInboundMessageForIdentity(
   identifyingCode: string,
   content: string
 ): Promise<void> {
+  triggerUpgradeCheck();
   const account = identityState.account;
   const identityId = identityState.identityId;
   debugLog(`[${identityId}] handleInboundMessageForIdentity ENTER: sender=${sender}, sessionId=${sessionId}`);
@@ -512,16 +512,14 @@ export async function handleInboundMessageForIdentity(
     const runtime = getAcpRuntime();
     const cfg = currentConfig;
 
-    const agentId = "main";
+    const agentId = account.agentId;
     const sessionKey = buildDmSessionKey({ agentId, identityId, peerAid: sender });
     const senderName = sender.split(".")[0];
 
     // Phase B: 上下文文件 ensure + load
     let contextBlock = "";
     try {
-      const wsDir = identityState.account.workspaceDir
-        || currentAcpConfig?.workspaceDir
-        || getWorkspaceDir(identityId);
+      const wsDir = getWorkspaceDir(identityId);
       if (wsDir && currentAcpConfig?.context?.enableContextInjection !== false) {
         ensureIdentityContext(wsDir, identityId, account.fullAid);
         ensurePeerContext(wsDir, identityId, sender);
@@ -676,6 +674,7 @@ export async function handleGroupMessagesForIdentity(
     onSelfSend?: (ts: number) => void;
   }
 ): Promise<void> {
+  triggerUpgradeCheck();
   const identityId = identityState.identityId;
   const account = identityState.account;
   const selfAid = account.fullAid;
@@ -757,7 +756,7 @@ export async function handleGroupMessagesForIdentity(
     const runtime = getAcpRuntime();
     const cfg = currentConfig;
 
-    const agentId = "main";
+    const agentId = account.agentId;
     const sessionKey = buildGroupSessionKey({ agentId, identityId, groupId });
 
     debugLog(`[${identityId}] sessionKey=${sessionKey}`);
@@ -768,9 +767,7 @@ export async function handleGroupMessagesForIdentity(
     // Phase B: 上下文文件 ensure + load
     let groupContextBlock = "";
     try {
-      const wsDir = identityState.account.workspaceDir
-        || currentAcpConfig?.workspaceDir
-        || getWorkspaceDir(identityId);
+      const wsDir = getWorkspaceDir(identityId);
       if (wsDir && currentAcpConfig?.context?.enableContextInjection !== false) {
         ensureIdentityContext(wsDir, identityId, selfAid);
         ensureGroupContext(wsDir, identityId, groupId);
@@ -953,9 +950,7 @@ export async function syncAgentMdForIdentity(identityId?: string): Promise<{ suc
   if (!state) return { success: false, error: `Identity ${identityId ?? 'default'} not found` };
 
   const aid = state.aidKey;
-  const wsDir = state.account.workspaceDir
-    || currentAcpConfig?.workspaceDir
-    || getWorkspaceDir(state.identityId);
+  const wsDir = getWorkspaceDir(state.identityId);
 
   if (wsDir) {
     const sources = loadAgentMdSources(wsDir, state.identityId);
@@ -972,7 +967,7 @@ export async function syncAgentMdForIdentity(identityId?: string): Promise<{ suc
   }
 
   const agentMdPath = state.account.agentMdPath || currentAcpConfig?.agentMdPath;
-  if (!agentMdPath) return { success: false, error: "Neither workspaceDir nor agentMdPath configured" };
+  if (!agentMdPath) return { success: false, error: "Neither workspaceDir (via before_agent_start hook) nor agentMdPath configured" };
 
   try {
     return await router.multiClient.uploadAgentMdFromFile(aid, agentMdPath);

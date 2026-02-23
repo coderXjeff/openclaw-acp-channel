@@ -28,7 +28,7 @@ export const acpGatewayAdapter: ChannelGatewayAdapter<ResolvedAcpAccount> = {
       return;
     }
 
-    const accountAid = ctx.account.fullAid || `${ctx.account.agentName}.${ctx.account.domain}`;
+    const accountAid = ctx.account.fullAid || `${ctx.account.agentId}.${ctx.account.domain}`;
     log.info(`[${ctx.accountId}] Starting account ${ctx.accountId} (${accountAid})`);
 
     // 启动该身份的 ACP 连接（带自动重连）

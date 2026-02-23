@@ -28,9 +28,9 @@ type JSONSchema = {
 const acpIdentityEntrySchema: JSONSchema = {
   type: "object",
   properties: {
-    agentName: {
+    agentId: {
       type: "string",
-      description: "Agent name (without domain, e.g., 'my-agent')",
+      description: "Agent ID referencing agents.list[] (also used as AID prefix, e.g., 'funny-bot' → 'funny-bot.agentcp.io')",
       pattern: "^[a-z0-9-]+$",
     },
     domain: {
@@ -59,10 +59,6 @@ const acpIdentityEntrySchema: JSONSchema = {
       type: "string",
       description: "Path to agent.md file (auto-upload on login)",
     },
-    workspaceDir: {
-      type: "string",
-      description: "Workspace directory path for this identity",
-    },
     profile: {
       type: "object",
       properties: {
@@ -80,7 +76,7 @@ const acpIdentityEntrySchema: JSONSchema = {
       description: "Mention aliases for this identity in group chats",
     },
   },
-  required: ["agentName"],
+  required: ["agentId"],
 };
 
 export const acpConfigSchema: JSONSchema = {
@@ -126,10 +122,6 @@ export const acpConfigSchema: JSONSchema = {
     agentMdPath: {
       type: "string",
       description: "Path to agent.md file (auto-upload on login)",
-    },
-    workspaceDir: {
-      type: "string",
-      description: "Workspace directory path for auto-generating agent.md from source files",
     },
     profile: {
       type: "object",

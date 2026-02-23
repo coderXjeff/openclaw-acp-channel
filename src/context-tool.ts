@@ -115,7 +115,7 @@ function resolveWorkspaceDir(identityId: string): string | null {
   const router = getRouter();
   if (!router) return null;
   const state = router.getState(identityId);
-  const wsDir = state?.account.workspaceDir || getWorkspaceDir(identityId);
+  const wsDir = getWorkspaceDir(identityId);
   return wsDir ?? null;
 }
 

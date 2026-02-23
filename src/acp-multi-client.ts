@@ -19,7 +19,7 @@ export type { ConnectionStatus };
 const ACP_STORAGE_DIR = path.join(process.env.HOME || "~", ".acp-storage");
 
 export interface AidInstanceOptions {
-  agentName: string;
+  agentId: string;
   domain: string;
   seedPassword?: string;
   agentMdPath?: string;
@@ -46,7 +46,7 @@ export class AcpMultiClient {
    * 为一个 AID 创建独立连接
    */
   async connectAid(opts: AidInstanceOptions): Promise<string> {
-    const fullAid = `${opts.agentName}.${opts.domain}`;
+    const fullAid = `${opts.agentId}.${opts.domain}`;
     if (this.instances.has(fullAid)) {
       console.log(`[ACP-Multi] ${fullAid} already connected`);
       return fullAid;

@@ -41,13 +41,12 @@ export interface MentionInfo {
 
 // ACP 单个身份配置（多身份模式）
 export interface AcpIdentityEntry {
-  agentName: string;        // Agent 名称 (不含域名)
+  agentId: string;          // 引用 agents.list[] 中的 Agent（fullAid = agentId.domain）
   domain?: string;          // ACP 域名，如 agentcp.io
   seedPassword?: string;    // 种子密码
   ownerAid?: string | string[];  // 主人的 AID（支持单个或多个）
   allowFrom?: string[];     // 允许接收消息的 AID 列表
   agentMdPath?: string;     // agent.md 文件路径，登录后自动上传
-  workspaceDir?: string;    // workspace 目录路径，用于自动生成 agent.md
   mentionAliases?: string[];  // P1: 提及别名列表
   profile?: {
     displayName?: string;
@@ -70,7 +69,6 @@ export interface AcpChannelConfig {
   ownerAid?: string | string[];  // 主人的 AID（支持单个或多个）
   allowFrom?: string[];     // 允许接收消息的 AID 列表
   agentMdPath?: string;     // agent.md 文件路径，登录后自动上传
-  workspaceDir?: string;    // workspace 目录路径，用于自动生成 agent.md
   profile?: {
     displayName?: string;
     description?: string;
@@ -122,14 +120,13 @@ export interface ResolvedAcpAccount {
   accountId: string;
   identityId: string;
   agentAidBindingMode: "strict" | "flex";
-  agentName: string;
+  agentId: string;            // 引用 agents.list[] 中的 Agent（多身份）或 agentName（单身份兼容）
   domain: string;
-  fullAid: string;          // 完整 AID: agentName.domain
+  fullAid: string;          // 完整 AID: agentId.domain
   enabled: boolean;
   ownerAid: string[];       // 主人的 AID 列表（解析后统一为数组）
   allowFrom: string[];
   seedPassword: string;
-  workspaceDir?: string;
   agentMdPath?: string;
 }
 

@@ -74,19 +74,18 @@ const acpConfigAdapter = {
 
     if (selectedIdentity) {
       const domain = selectedIdentity.domain ?? acpConfig?.domain ?? "agentcp.io";
-      const agentName = selectedIdentity.agentName ?? "";
+      const agentId = selectedIdentity.agentId ?? "";
       return {
         accountId: selectedIdentityId,
         identityId: selectedIdentityId,
         agentAidBindingMode: bindingMode,
-        agentName,
+        agentId,
         domain,
-        fullAid: agentName ? `${agentName}.${domain}` : "",
+        fullAid: agentId ? `${agentId}.${domain}` : "",
         enabled: acpConfig?.enabled ?? false,
         ownerAid: normalizeOwnerAid(selectedIdentity.ownerAid ?? acpConfig?.ownerAid),
         allowFrom: selectedIdentity.allowFrom ?? acpConfig?.allowFrom ?? [],
         seedPassword: selectedIdentity.seedPassword ?? acpConfig?.seedPassword ?? "",
-        workspaceDir: selectedIdentity.workspaceDir ?? acpConfig?.workspaceDir,
         agentMdPath: selectedIdentity.agentMdPath ?? acpConfig?.agentMdPath,
       };
     }
@@ -101,14 +100,13 @@ const acpConfigAdapter = {
       accountId: "default",
       identityId: "default",
       agentAidBindingMode: bindingMode,
-      agentName,
+      agentId: agentName,
       domain,
       fullAid: agentName ? `${agentName}.${domain}` : "",
       enabled: acpConfig?.enabled ?? false,
       ownerAid: normalizeOwnerAid(acpConfig?.ownerAid),
       allowFrom: acpConfig?.allowFrom ?? [],
       seedPassword: acpConfig?.seedPassword ?? "",
-      workspaceDir: acpConfig?.workspaceDir,
       agentMdPath: acpConfig?.agentMdPath,
     };
   },
@@ -125,18 +123,18 @@ const acpConfigAdapter = {
   },
 
   isEnabled: (account: ResolvedAcpAccount, _cfg: any): boolean => {
-    return account.enabled && !!account.agentName;
+    return account.enabled && !!account.agentId;
   },
 
   isConfigured: (account: ResolvedAcpAccount, _cfg: any): boolean => {
-    return !!account.agentName;
+    return !!account.agentId;
   },
 
   describeAccount: (account: ResolvedAcpAccount, _cfg: any) => ({
     accountId: account.accountId,
     name: account.fullAid,
     enabled: account.enabled,
-    configured: !!account.agentName,
+    configured: !!account.agentId,
     allowFrom: account.allowFrom,
   }),
 
@@ -157,8 +155,13 @@ const acpConfigSchemaAdapter: ChannelConfigSchema = {
   uiHints: {
     agentName: {
       label: "Agent Name",
-      help: "Your agent name (without domain, e.g., 'my-agent')",
+      help: "Your agent name for single-identity mode (without domain, e.g., 'my-agent')",
       placeholder: "my-agent",
+    },
+    agentId: {
+      label: "Agent ID",
+      help: "Reference to agents.list[] Agent ID (for multi-identity mode)",
+      placeholder: "funny-bot",
     },
     domain: {
       label: "Domain",

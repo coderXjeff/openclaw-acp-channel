@@ -136,7 +136,7 @@ export class AcpIdentityRouter {
     const log = ctx?.log ?? { info: console.log, warn: console.warn, error: console.error };
 
     const opts: AidInstanceOptions = {
-      agentName: state.account.agentName,
+      agentId: state.account.agentId,
       domain: state.account.domain,
       seedPassword: state.account.seedPassword,
       agentMdPath: state.account.agentMdPath,

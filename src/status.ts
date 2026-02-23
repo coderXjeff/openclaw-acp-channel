@@ -29,8 +29,8 @@ export const acpStatusAdapter: ChannelStatusAdapter<ResolvedAcpAccount, AcpProbe
 
   probeAccount: async ({ account, timeoutMs }): Promise<AcpProbeResult> => {
     const aid = account.fullAid;
-    if (!aid || !account.agentName) {
-      return { ok: false, aid: "", error: "Agent name not configured" };
+    if (!aid || !account.agentId) {
+      return { ok: false, aid: "", error: "Agent ID not configured" };
     }
 
     try {
@@ -66,7 +66,7 @@ export const acpStatusAdapter: ChannelStatusAdapter<ResolvedAcpAccount, AcpProbe
   },
 
   buildAccountSnapshot: ({ account, cfg, runtime, probe }): ChannelAccountSnapshot => {
-    const configured = Boolean(account.agentName?.trim());
+    const configured = Boolean(account.agentId?.trim());
     const connectionSnapshot = getConnectionSnapshot(account.accountId);
 
     return {
@@ -109,12 +109,12 @@ export const acpStatusAdapter: ChannelStatusAdapter<ResolvedAcpAccount, AcpProbe
       if (!snap.configured) {
         const fix = snap.accountId === "default"
           ? "Set channels.acp.agentName or channels.acp.identities"
-          : `Set channels.acp.identities.${snap.accountId}.agentName`;
+          : `Set channels.acp.identities.${snap.accountId}.agentId`;
         issues.push({
           channel: "acp",
           accountId: snap.accountId,
           kind: "config",
-          message: "Agent name not configured",
+          message: "Agent ID not configured",
           fix,
         });
       }

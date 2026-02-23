@@ -21,8 +21,8 @@ export function buildMentionKeywords(
 ): string[] {
   const raw: string[] = [];
 
-  // 1. agentName
-  if (account.agentName) raw.push(account.agentName);
+  // 1. agentId
+  if (account.agentId) raw.push(account.agentId);
 
   // 2. aid 前缀（"." 前部分）
   const dotIdx = account.fullAid.indexOf(".");

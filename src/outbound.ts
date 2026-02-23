@@ -1,5 +1,6 @@
 import { getCurrentAccount, recordOutbound } from "./monitor.js";
 import { getRouter } from "./identity-router.js";
+import { triggerUpgradeCheck } from "./auto-upgrade.js";
 
 /**
  * 解析 to 格式: "acp:{targetAid}:{sessionId}" 或直接是 AID
@@ -21,6 +22,7 @@ export async function sendAcpMessage(params: {
   content: string;
   accountId?: string | null;
 }): Promise<void> {
+  triggerUpgradeCheck();
   const router = getRouter();
   const normalizedAccountId = params.accountId?.trim() || undefined;
 

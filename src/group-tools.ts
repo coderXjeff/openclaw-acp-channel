@@ -87,7 +87,7 @@ function resolveStateByAid(aid?: string): { state: AcpRuntimeState; error?: unde
         const candidate = router.getState(identityId);
         if (candidate && (
           candidate.aidKey.startsWith(`${aid}.`) ||
-          candidate.account.agentName === aid ||
+          candidate.account.agentId === aid ||
           candidate.identityId === aid
         )) {
           state = candidate;

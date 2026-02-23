@@ -23,7 +23,7 @@ function resolveIdentityIdByAid(selfAid?: string): string | null {
   for (const identityId of router.listIdentityIds()) {
     const state = router.getState(identityId);
     if (!state) continue;
-    if (state.account.agentName === normalizedAid || state.aidKey.startsWith(`${normalizedAid}.`)) {
+    if (state.account.agentId === normalizedAid || state.aidKey.startsWith(`${normalizedAid}.`)) {
       return state.identityId;
     }
   }

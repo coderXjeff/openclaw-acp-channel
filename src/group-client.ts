@@ -102,7 +102,7 @@ function loadIdentityDisplayAliases(state: IdentityAcpState, router: AcpIdentity
   const aliases: string[] = [];
   try {
     const acpConfig = router.getAcpConfig();
-    const wsDir = state.account.workspaceDir || acpConfig?.workspaceDir || getWorkspaceDir(state.identityId);
+    const wsDir = getWorkspaceDir(state.identityId);
     if (!wsDir) return aliases;
     const sources = loadAgentMdSources(wsDir, state.identityId);
     const identityMd = sources.identity;

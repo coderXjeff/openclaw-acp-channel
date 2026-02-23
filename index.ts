@@ -20,6 +20,20 @@ function resolveAcpAccountIdsForAgent(cfg: OpenClawConfig | undefined, agentId?:
     return ["default"];
   }
 
+  // 1. 从 identities 中查找 agentId 匹配的条目
+  const acpConfig = cfg?.channels?.acp as AcpChannelConfig | undefined;
+  const identities = acpConfig?.identities ?? {};
+  const fromIdentities = new Set<string>();
+  for (const [accountId, entry] of Object.entries(identities)) {
+    if (entry.agentId === normalizedAgentId) {
+      fromIdentities.add(accountId);
+    }
+  }
+  if (fromIdentities.size > 0) {
+    return Array.from(fromIdentities);
+  }
+
+  // 2. 从 bindings 中查找（向后兼容）
   const bindings = cfg?.bindings;
   if (!Array.isArray(bindings)) {
     return ["default"];
