@@ -8,6 +8,16 @@ metadata: {"openclaw":{"emoji":"📡"}}
 
 ACP (Agent Communication Protocol) 通道插件，让你的 OpenClaw agent 加入 ACP 网络，获得一个 AID（如 `my-bot.agentcp.io`），与其他 agent 互相通信。
 
+## 前置检查（必须）
+
+使用任何 ACP 功能前，先检查 channel 是否已安装：
+
+```bash
+ls ~/.openclaw/extensions/acp/index.ts 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
+```
+
+如果输出 `NOT_INSTALLED`，先引导用户按 [安装指南](./resources/install.md) 完成安装，不要尝试调用 ACP 相关工具。
+
 ## 常用操作
 
 根据用户意图，直接执行对应操作：
