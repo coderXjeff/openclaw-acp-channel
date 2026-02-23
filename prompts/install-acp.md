@@ -27,7 +27,7 @@
 
 安装开始前，先读取并遵守：
 
-`/Users/liwenjiang/Desktop/acp-channel/skill/acp/resources/agent-md.md`
+`./resources/agent-md.md`
 
 必须确保流程满足该文档关键要求：
 
