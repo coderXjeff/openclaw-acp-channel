@@ -19,6 +19,7 @@ import { buildDmSessionKey, buildGroupSessionKey } from "./acp-session-key.js";
 import { ensureIdentityContext, ensurePeerContext, ensureGroupContext, loadContextForDM, loadContextForGroup } from "./acp-context.js";
 import { setSessionContext, clearSessionContext, setActiveTurnKey, clearActiveTurnKey, resetTurnOps } from "./context-tool.js";
 import { triggerUpgradeCheck } from "./auto-upgrade.js";
+import { shouldRotateGroupSession, readCarryoverContext, saveGroupRotationState, loadGroupRotationState } from "./group-session-rotation.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -757,12 +758,40 @@ export async function handleGroupMessagesForIdentity(
     const cfg = currentConfig;
 
     const agentId = account.agentId;
-    const sessionKey = buildGroupSessionKey({ agentId, identityId, groupId });
-
-    debugLog(`[${identityId}] sessionKey=${sessionKey}`);
-
     const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, { agentId });
     debugLog(`[${identityId}] storePath=${storePath}`);
+
+    // ===== 群会话轮转 =====
+    const buffer = identityState.groupMessageBuffers.get(groupId);
+    if (buffer) {
+      buffer.cumulativeMsgCount += filtered.length;
+    }
+
+    let carryoverBlock = "";
+    const sessionConfig = getSessionConfig();
+    if (buffer && shouldRotateGroupSession(buffer.cumulativeMsgCount, sessionConfig.groupSessionMsgLimit)) {
+      const oldSessionKey = buildGroupSessionKey({ agentId, identityId, groupId, sessionSeq: buffer.sessionSeq });
+      debugLog(`[${identityId}] Session rotation: group=${groupId}, oldSeq=${buffer.sessionSeq}, cumulativeMsgCount=${buffer.cumulativeMsgCount}`);
+
+      const carryover = readCarryoverContext({ storePath, sessionKey: oldSessionKey, agentId });
+
+      buffer.sessionSeq++;
+      buffer.cumulativeMsgCount = filtered.length; // 重置为当前批次的消息数
+
+      // 持久化轮转状态
+      const allState = loadGroupRotationState(identityState.aidKey);
+      allState[groupId] = { sessionSeq: buffer.sessionSeq, cumulativeMsgCount: buffer.cumulativeMsgCount };
+      saveGroupRotationState(identityState.aidKey, allState);
+
+      if (carryover) {
+        carryoverBlock = carryover;
+      }
+      debugLog(`[${identityId}] Session rotation: group=${groupId}, newSeq=${buffer.sessionSeq}, carryover=${carryover ? 'yes' : 'no'}`);
+      console.log(`[ACP] [${identityId}] Session rotation: group=${groupId}, oldSeq=${buffer.sessionSeq - 1}, newSeq=${buffer.sessionSeq}`);
+    }
+
+    const sessionKey = buildGroupSessionKey({ agentId, identityId, groupId, sessionSeq: buffer?.sessionSeq });
+    debugLog(`[${identityId}] sessionKey=${sessionKey}`);
 
     // Phase B: 上下文文件 ensure + load
     let groupContextBlock = "";
@@ -797,6 +826,12 @@ export async function handleGroupMessagesForIdentity(
       );
       fullSystemPrompt = fullSystemPrompt + "\n\n" + situationPrompt;
       debugLog(`[${identityId}] P1 situationPrompt injected, replyType=${p1Options.replyType}`);
+    }
+
+    // 轮转 carryover 注入
+    if (carryoverBlock) {
+      fullSystemPrompt = carryoverBlock + "\n\n---\n\n" + fullSystemPrompt;
+      debugLog(`[${identityId}] Carryover context injected into system prompt`);
     }
 
     const messageWithContext =

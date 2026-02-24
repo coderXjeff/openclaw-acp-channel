@@ -27,10 +27,15 @@ export function buildGroupSessionKey(params: {
   agentId: string;
   identityId: string;
   groupId: string;
+  sessionSeq?: number;
 }): string {
-  const { agentId, identityId, groupId } = params;
+  const { agentId, identityId, groupId, sessionSeq } = params;
   const gidLower = normalizeGroupId(groupId);
-  return identityId === "default"
+  let key = identityId === "default"
     ? `agent:${agentId}:acp:group:${gidLower}`
     : `agent:${agentId}:acp:${identityId}:group:${gidLower}`;
+  if (sessionSeq && sessionSeq >= 2) {
+    key += `:s${sessionSeq}`;
+  }
+  return key;
 }

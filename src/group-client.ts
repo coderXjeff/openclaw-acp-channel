@@ -16,6 +16,7 @@ import { loadAgentMdSources } from "./agent-md-sources.js";
 import { parseIdentity } from "./agent-md-builder.js";
 import { getWorkspaceDir } from "./workspace.js";
 import { buildMentionKeywords, checkMention, pruneVitalityWindow, computeVitality, determineReplyType } from "./group-social.js";
+import { loadGroupRotationState, saveGroupRotationState } from "./group-session-rotation.js";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -34,6 +35,10 @@ function debugLog(msg: string): void {
 function getOrCreateBuffer(state: IdentityAcpState, groupId: string): GroupMessageBuffer {
   let buffer = state.groupMessageBuffers.get(groupId);
   if (!buffer) {
+    // 加载持久化的轮转状态
+    const persisted = loadGroupRotationState(state.aidKey);
+    const groupState = persisted[groupId];
+
     buffer = {
       groupId,
       incomingMessages: [],
@@ -55,6 +60,9 @@ function getOrCreateBuffer(state: IdentityAcpState, groupId: string): GroupMessa
       hasPendingMention: false,
       lastNReplyHashes: [],
       mentionDelayTimer: null,
+      // 群会话轮转
+      cumulativeMsgCount: groupState?.cumulativeMsgCount ?? 0,
+      sessionSeq: groupState?.sessionSeq ?? 1,
     };
     state.groupMessageBuffers.set(groupId, buffer);
   }
@@ -414,6 +422,15 @@ async function dispatchToAgent(
     buffer.dispatching = false;
     buffer.lastDispatchAt = Date.now();
     debugLog(`[${identityId}] dispatchToAgent FINALLY: group=${groupId}, dispatching=false, lastDispatchAt=${buffer.lastDispatchAt}`);
+
+    // 持久化群会话轮转状态
+    try {
+      const allRotation = loadGroupRotationState(state.aidKey);
+      allRotation[groupId] = { sessionSeq: buffer.sessionSeq, cumulativeMsgCount: buffer.cumulativeMsgCount };
+      saveGroupRotationState(state.aidKey, allRotation);
+    } catch (err) {
+      debugLog(`[${identityId}] saveGroupRotationState ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     // P1 修复：flush dispatch 期间积压的 incomingMessages
     if (buffer.incomingMessages.length > 0) {

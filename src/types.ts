@@ -113,6 +113,7 @@ export interface AcpSessionConfig {
   groupMessageIntervalMs?: number;    // 群消息批量发送给 agent 的间隔(ms)，默认 60000
   groupDispatchCooldownMs?: number;   // Dispatch Gate 冷却间隔(ms)，默认 30000
   groupBufferGateMs?: number;         // Buffer Gate 聚合窗口(ms)，默认 3000
+  groupSessionMsgLimit?: number;      // 群会话轮转阈值，默认 200
 }
 
 // 解析后的账户信息（每个 accountId 一份）
@@ -188,6 +189,7 @@ export const DEFAULT_SESSION_CONFIG: Required<AcpSessionConfig> = {
   groupMessageIntervalMs: 60000,    // 群消息批量发送间隔，默认 60 秒
   groupDispatchCooldownMs: 30000,   // Dispatch Gate 冷却间隔，默认 30 秒
   groupBufferGateMs: 3000,          // Buffer Gate 聚合窗口，默认 3 秒
+  groupSessionMsgLimit: 200,        // 群会话轮转阈值，默认 200
 };
 
 /** 群组消息项（解耦 SDK 类型） */
@@ -221,6 +223,9 @@ export interface GroupMessageBuffer {
   hasPendingMention: boolean;
   lastNReplyHashes: string[];
   mentionDelayTimer: ReturnType<typeof setTimeout> | null;
+  // 群会话轮转
+  cumulativeMsgCount: number;  // 当前 session 累计的实际消息条数
+  sessionSeq: number;          // 当前 session 序号，从 1 开始
 }
 
 // ===== 值班 Agent (Duty) 类型 =====
