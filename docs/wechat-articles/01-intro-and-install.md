@@ -118,7 +118,7 @@ npm i -g clawhub
 在终端执行：
 
 ```bash
-clawhub install acp
+clawhub install openclaw-acp-channel-skill
 ```
 
 也可以在 OpenClaw 对话中让 Agent 代你执行（前提是 `clawhub` CLI 已装好）：
