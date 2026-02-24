@@ -3,10 +3,10 @@
 # ACP Channel 安装（单身份/多身份 + 绑定策略）
 
 目标：
-1) 安装/更新 ACP 插件  
-2) 正确写入单身份或多身份配置  
-3) 正确创建 `agent.md` 并可自动同步  
-4) 正确写入 `bindings`，满足 strict 绑定策略  
+1) 安装/更新 ACP 插件
+2) 正确写入单身份或多身份配置
+3) 正确创建 `agent.md` 并可自动同步
+4) 正确写入 `bindings`，满足 strict 绑定策略
 5) 完成 ACP 网络预检
 
 ---
@@ -24,39 +24,25 @@
 
 ## Step 1: 环境检查
 
-```bash
-node --version && npm --version && git --version
-ls ~/.openclaw/openclaw.json 2>/dev/null && echo "OK" || echo "ERROR: OpenClaw not initialized"
-```
+确认以下命令可用：node、npm、git。
+确认 `~/.openclaw/openclaw.json` 存在。
 
-出现 `ERROR` 或命令失败，立即停止。
+任一条件不满足，立即停止。
 
 ---
 
 ## Step 2: 安装插件 + 依赖
 
-```bash
-GITHUB_URL="https://github.com/coderXjeff/openclaw-acp-channel.git"
-GITEE_URL="https://gitee.com/yi-kejing/openclaw-acp-channel.git"
+如果 `~/.openclaw/extensions/acp/.git` 已存在，进入该目录执行 git pull 更新。
 
-if [ -d ~/.openclaw/extensions/acp/.git ]; then
-  cd ~/.openclaw/extensions/acp && git pull
-else
-  mkdir -p ~/.openclaw/extensions
-  echo "尝试从 GitHub 克隆..."
-  if ! git clone "$GITHUB_URL" ~/.openclaw/extensions/acp 2>/dev/null; then
-    echo "GitHub 不可达，切换 Gitee 镜像..."
-    git clone "$GITEE_URL" ~/.openclaw/extensions/acp
-  fi
-fi
-cd ~/.openclaw/extensions/acp && npm install
-```
+否则新装：
+- 创建 `~/.openclaw/extensions` 目录
+- 优先从 GitHub 克隆：`https://github.com/coderXjeff/openclaw-acp-channel.git` 到 `~/.openclaw/extensions/acp`
+- GitHub 不可达时，使用 Gitee 镜像：`https://gitee.com/yi-kejing/openclaw-acp-channel.git`
 
-```bash
-ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && echo "acp-ts OK" || echo "ERROR: acp-ts not installed"
-```
+克隆完成后，在 `~/.openclaw/extensions/acp` 目录下安装依赖（npm install）。
 
-出现 `ERROR` 立即停止。
+验证：确认 `~/.openclaw/extensions/acp/node_modules/acp-ts/package.json` 存在，不存在则停止。
 
 ---
 
@@ -104,17 +90,17 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 提示：
 
-> 请输入主人 AID（如 `your-name.agentcp.io`），或输入“跳过”。
+> 请输入主人 AID（如 `your-name.agentcp.io`），或输入"跳过"。
 
 规则：
 
-- 输入“跳过” => `OWNER_AID=""`
+- 输入"跳过" => `OWNER_AID=""`
 - 否则必须包含 `.`，不满足要重问
 
 ### Step 4.3: 自动生成（用户未提供时）
 
 - `DOMAIN`: `agentcp.io`
-- `SEED_PASSWORD`: `require('crypto').randomBytes(16).toString('hex')`
+- `SEED_PASSWORD`: 使用 crypto.randomBytes(16) 生成 32 位十六进制字符串
 - `allowFrom`: `["*"]`
 - `displayName`: `agentName` 转空格并首字母大写
 
@@ -122,47 +108,33 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 ## Step 5: 写入配置（深度合并，不覆盖其他字段）
 
-先备份：
-
-```bash
-cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
-```
+先备份 `~/.openclaw/openclaw.json` 到 `~/.openclaw/openclaw.json.bak`。
 
 ### Step 5.1: 写 `channels.acp`
 
 **单身份（MODE=single）**
 
-```json
-"acp": {
-  "enabled": true,
-  "agentAidBindingMode": "strict",
-  "agentName": "{AGENT_NAME}",
-  "domain": "{DOMAIN}",
-  "seedPassword": "{SEED_PASSWORD}",
-  "ownerAid": "{OWNER_AID}",
-  "allowFrom": ["*"],
-  "agentMdPath": "~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md"
-}
-```
+在 `channels.acp` 中写入以下字段：
+- `enabled`: true
+- `agentAidBindingMode`: "strict"
+- `agentName`: {AGENT_NAME}
+- `domain`: {DOMAIN}
+- `seedPassword`: {SEED_PASSWORD}
+- `ownerAid`: {OWNER_AID}
+- `allowFrom`: ["*"]
+- `agentMdPath`: "~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md"
 
 **多身份（MODE=multi）**
 
-```json
-"acp": {
-  "enabled": true,
-  "agentAidBindingMode": "strict",
-  "identities": {
-    "{TARGET_ACCOUNT_ID}": {
-      "agentName": "{AGENT_NAME}",
-      "domain": "{DOMAIN}",
-      "seedPassword": "{SEED_PASSWORD}",
-      "ownerAid": "{OWNER_AID}",
-      "allowFrom": ["*"],
-      "agentMdPath": "~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md"
-    }
-  }
-}
-```
+在 `channels.acp.identities.{TARGET_ACCOUNT_ID}` 中写入以下字段：
+- `agentName`: {AGENT_NAME}
+- `domain`: {DOMAIN}
+- `seedPassword`: {SEED_PASSWORD}
+- `ownerAid`: {OWNER_AID}
+- `allowFrom`: ["*"]
+- `agentMdPath`: "~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md"
+
+同时确保顶层有 `enabled: true` 和 `agentAidBindingMode: "strict"`。
 
 要求：
 
@@ -171,21 +143,13 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 
 ### Step 5.2: 开启插件
 
-```json
-"plugins": {
-  "entries": {
-    "acp": { "enabled": true }
-  }
-}
-```
+确保 `plugins.entries.acp.enabled` 为 `true`。
 
 ### Step 5.3: 写入/校验 `bindings`（关键）
 
-`strict` 模式默认要求 1:1 绑定，必须确保有：
+`strict` 模式默认要求 1:1 绑定，必须确保 `bindings` 数组中存在：
 
-```json
-{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
-```
+    { "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
 
 规则：
 
@@ -195,29 +159,22 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 
 ### Step 5.4: 配置合法性检查
 
-```bash
-node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;const p=c.plugins?.entries?.acp;const b=Array.isArray(c.bindings)?c.bindings:[];const hasMode=!!(a?.agentAidBindingMode==='strict'||a?.agentAidBindingMode==='flex');const singleOk=!!(a?.enabled&&a?.agentName);const multiOk=!!(a?.enabled&&a?.identities&&Object.keys(a.identities).length>0);const bindOk=b.some(x=>x?.match?.channel==='acp');if((singleOk||multiOk)&&p?.enabled&&hasMode&&bindOk)console.log('Config OK');else{console.log('ERROR');process.exit(1)}"
-```
+读取 `~/.openclaw/openclaw.json`，验证以下条件全部满足：
+- `channels.acp.enabled` 为 true
+- `channels.acp.agentAidBindingMode` 为 "strict" 或 "flex"
+- 单身份：`channels.acp.agentName` 存在；多身份：`channels.acp.identities` 非空
+- `plugins.entries.acp.enabled` 为 true
+- `bindings` 中存在 `channel: "acp"` 的条目
 
-失败则恢复备份并停止：
-
-```bash
-cp ~/.openclaw/openclaw.json.bak ~/.openclaw/openclaw.json
-```
+任一条件不满足，恢复备份并停止。
 
 ---
 
 ## Step 6: 创建 `agent.md`
 
-创建目录：
+创建目录 `~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/`。
 
-```bash
-mkdir -p ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public
-```
-
-写入文件：
-
-`~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md`
+写入文件 `~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md`。
 
 格式必须是 YAML frontmatter + Markdown 正文，必填字段：`aid/name/type/version/description`。
 
@@ -255,56 +212,24 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 
 ### Step 8.1: 本地文件验证
 
-```bash
-ls ~/.openclaw/extensions/acp/index.ts && echo "Plugin OK" || echo "ERROR: Plugin missing"
-ls ~/.openclaw/extensions/acp/openclaw.plugin.json && echo "Manifest OK" || echo "ERROR: Manifest missing"
-ls ~/.openclaw/extensions/acp/skill/acp/SKILL.md && echo "Skill OK" || echo "ERROR: Skill missing"
-ls ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md && echo "agent.md OK" || echo "ERROR: agent.md missing"
-```
+确认以下文件全部存在：
+- `~/.openclaw/extensions/acp/index.ts`（插件入口）
+- `~/.openclaw/extensions/acp/openclaw.plugin.json`（插件清单）
+- `~/.openclaw/extensions/acp/skill/acp/SKILL.md`（Skill 文件）
+- `~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md`（Agent 名片）
 
-出现 `ERROR` 立即停止。
+任一缺失立即停止。
 
 ### Step 8.2: ACP 网络预检（按目标身份）
 
-```bash
-node -e "
-const fs=require('fs'),path=require('path'),os=require('os');
-const SF=path.join(os.homedir(),'.acp-storage','localStorage.json');
-let sd={};try{if(fs.existsSync(SF))sd=JSON.parse(fs.readFileSync(SF,'utf8'))}catch{}
-const lsp={getItem(k){return sd[k]??null},setItem(k,v){sd[k]=v;fs.writeFileSync(SF,JSON.stringify(sd,null,2))},removeItem(k){delete sd[k];fs.writeFileSync(SF,JSON.stringify(sd,null,2))},clear(){sd={};fs.writeFileSync(SF,JSON.stringify(sd))},key(i){return Object.keys(sd)[i]??null},get length(){return Object.keys(sd).length}};
-globalThis.window=globalThis.window||{};globalThis.window.localStorage=lsp;globalThis.localStorage=lsp;
-const { AgentManager } = require(os.homedir()+'/.openclaw/extensions/acp/node_modules/acp-ts');
-const cfg=JSON.parse(fs.readFileSync(path.join(os.homedir(),'.openclaw','openclaw.json'),'utf8'));
-const ac=cfg.channels?.acp||{};
-const accountId='{TARGET_ACCOUNT_ID}';
-const hasIdentities=!!(ac.identities&&Object.keys(ac.identities).length>0);
-const target=hasIdentities ? (ac.identities?.[accountId]||null) : ac;
-if(!target||!target.agentName){console.error('PREFLIGHT_FAIL:'+accountId+': account config missing');process.exit(1)}
-const aid=target.agentName+'.'+(target.domain||'agentcp.io');
-(async()=>{
-  try{
-    const mgr=AgentManager.getInstance();
-    const acp=mgr.initACP(target.domain||'agentcp.io',target.seedPassword||'',path.join(os.homedir(),'.acp-storage'));
-    let loaded=await acp.loadAid(aid);
-    if(!loaded) loaded=await acp.createAid(aid);
-    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT')),10000));
-    const online=await Promise.race([acp.online(),timeout]);
-    console.log('NETWORK OK:'+online.messageServer);
-    console.log('PREFLIGHT_PASS:'+accountId);
-  }catch(err){
-    const apiError=err?.response?.data?.error||err?.cause?.response?.data?.error;
-    const msg=apiError||err?.message||String(err);
-    console.error('PREFLIGHT_FAIL:'+accountId+': '+msg);
-    process.exit(1);
-  }
-})();
-"
-```
+使用 acp-ts SDK 执行网络预检：
+1. 加载或创建 AID（loadAid / createAid）
+2. 调用 online() 获取连接配置（10 秒超时）
+3. 输出 messageServer 地址确认网络可达
 
 判定：
-
-- 出现 `PREFLIGHT_PASS:` => 成功
-- 出现 `PREFLIGHT_FAIL:` => 失败并停止
+- 成功连接 => 预检通过
+- 失败时根据错误信息判断：
   - 包含 `is used by another user` / `创建失败`：更换 `agentName`，回到 Step 4
   - 包含 `TIMEOUT`：提示网络问题
   - 包含 `signIn`：提示密码不匹配
