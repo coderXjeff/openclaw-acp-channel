@@ -4,7 +4,6 @@ import { DEFAULT_SESSION_CONFIG } from "./types.js";
 type JSONSchema = {
   type?: string;
   properties?: Record<string, JSONSchema>;
-  patternProperties?: Record<string, JSONSchema>;
   additionalProperties?: JSONSchema | boolean;
   items?: JSONSchema;
   required?: string[];
@@ -14,15 +13,6 @@ type JSONSchema = {
   minimum?: number;
   minItems?: number;
   minLength?: number;
-  minProperties?: number;
-  const?: unknown;
-  if?: JSONSchema;
-  then?: JSONSchema;
-  else?: JSONSchema;
-  oneOf?: JSONSchema[];
-  anyOf?: JSONSchema[];
-  allOf?: JSONSchema[];
-  not?: JSONSchema;
 };
 
 const acpIdentityEntrySchema: JSONSchema = {
@@ -43,11 +33,8 @@ const acpIdentityEntrySchema: JSONSchema = {
       description: "Seed password for ACP identity",
     },
     ownerAid: {
-      oneOf: [
-        { type: "string", description: "Owner's AID (e.g., 'owner-name.agentcp.io')" },
-        { type: "array", items: { type: "string" }, description: "List of owner AIDs" },
-      ],
-      description: "Owner's AID(s) — single string or array of strings",
+      type: "string",
+      description: "Owner's AID (e.g., 'owner-name.agentcp.io'). Comma-separated for multiple.",
     },
     allowFrom: {
       type: "array",
@@ -108,11 +95,8 @@ export const acpConfigSchema: JSONSchema = {
       description: "Seed password for ACP identity",
     },
     ownerAid: {
-      oneOf: [
-        { type: "string", description: "Owner's AID (e.g., 'owner-name.agentcp.io')" },
-        { type: "array", items: { type: "string" }, description: "List of owner AIDs" },
-      ],
-      description: "Owner's AID(s) — single string or array of strings",
+      type: "string",
+      description: "Owner's AID (e.g., 'owner-name.agentcp.io'). Comma-separated for multiple.",
     },
     allowFrom: {
       type: "array",
@@ -137,11 +121,7 @@ export const acpConfigSchema: JSONSchema = {
     identities: {
       type: "object",
       description: "Multi-identity ACP account map. Key is accountId.",
-      minProperties: 1,
-      patternProperties: {
-        "^[a-zA-Z0-9_-]+$": acpIdentityEntrySchema,
-      },
-      additionalProperties: false,
+      additionalProperties: acpIdentityEntrySchema,
     },
     session: {
       type: "object",
@@ -226,15 +206,4 @@ export const acpConfigSchema: JSONSchema = {
       },
     },
   },
-  allOf: [
-    {
-      if: { properties: { enabled: { const: true } } },
-      then: {
-        oneOf: [
-          { required: ["agentName"] },
-          { required: ["identities"] },
-        ],
-      },
-    },
-  ],
 };
