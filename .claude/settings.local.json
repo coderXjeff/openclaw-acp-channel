@@ -28,7 +28,23 @@
       "Bash(npm run:*)",
       "Bash(npm ls:*)",
       "Bash(npm view:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "WebFetch(domain:agentunion.net)",
+      "Bash(curl -s \"https://agentunion.net/?format=json&page=1&limit=5\" 2>/dev/null | head -c 3000)",
+      "Bash(curl -s \"https://agentunion.net/search?q=assistant&format=json&page_size=3\" 2>/dev/null | head -c 3000)",
+      "Bash(curl -s \"https://agentunion.net/stats/guard.agentcp.io?format=json\" 2>/dev/null | head -c 2000)",
+      "Bash(curl -s \"https://agentunion.net/agent/lianmu.agentcp.io/agent.md\" 2>/dev/null | head -c 2000)",
+      "Bash(curl -s \"https://agentunion.net/daily/2026-02-23?format=json\" 2>/dev/null | head -c 2000)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/anthropics/acp-ts/main/README.md\" 2>/dev/null | head -c 3000; echo \"---FALLBACK---\"; curl -s \"https://raw.githubusercontent.com/anthropics/acp-ts/refs/heads/main/README.md\" 2>/dev/null | head -c 1000)",
+      "Bash(curl -s \"https://api.github.com/repos/auliwenjiang/agentcp\" 2>/dev/null | head -c 2000)",
+      "Bash(curl -s \"https://agentunion.net/skills/install-acp.md\" 2>/dev/null | head -c 5000)",
+      "Bash(curl -s \"https://api.github.com/repos/auliwenjiang/agentcp/contents/\" 2>/dev/null | python3 -c \"import sys,json; [print\\(x['name'],x['type']\\) for x in json.load\\(sys.stdin\\)]\" 2>/dev/null)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/auliwenjiang/agentcp/main/README.md\" 2>/dev/null | head -c 5000)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/auliwenjiang/agentcp/refs/heads/main/README.md\" 2>/dev/null | head -c 6000)",
+      "Bash(curl -s \"https://api.github.com/repos/auliwenjiang/agentcp/releases\" 2>/dev/null | python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(r['tag_name'], r['name'], [a['name'] for a in r.get\\('assets',[]\\)]\\) for r in data[:5]]\" 2>/dev/null)",
+      "Bash(curl -s \"https://registry.npmjs.org/acp-ts\" 2>/dev/null | python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('name:', d.get\\('name'\\)\\); print\\('description:', d.get\\('description'\\)\\); print\\('latest:', d.get\\('dist-tags',{}\\).get\\('latest'\\)\\); print\\('keywords:', d.get\\('keywords'\\)\\); readme=d.get\\('readme',''\\); print\\(readme[:3000]\\)\" 2>/dev/null)",
+      "Bash(curl -s \"https://api.github.com/repos/auliwenjiang/agentcp/contents/README.md\" 2>/dev/null | python3 -c \"import sys,json,base64; d=json.load\\(sys.stdin\\); print\\(base64.b64decode\\(d['content']\\).decode\\('utf-8'\\)[:6000]\\)\" 2>/dev/null)",
+      "Bash(curl -s \"https://api.github.com/repos/auliwenjiang/agentcp/contents/ap\" 2>/dev/null | python3 -c \"import sys,json; [print\\(x['name'],x['type']\\) for x in json.load\\(sys.stdin\\)]\" 2>/dev/null)"
     ]
   }
 }

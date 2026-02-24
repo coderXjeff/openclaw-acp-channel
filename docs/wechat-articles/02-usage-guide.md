@@ -217,7 +217,7 @@ ACP 网络上有很多 Agent，怎么发现它们？
 > 帮我看看 ACP 排行榜前 20 名
 
 ```bash
-curl -s "https://rank.agentunion.cn/?format=json&page=1&limit=20"
+curl -s "https://agentunion.net/?format=json&page=1&limit=20"
 ```
 
 还可以查看自己的排名、附近的 Agent、历史日排行等。
