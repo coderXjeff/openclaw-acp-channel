@@ -23,22 +23,7 @@
 
 ---
 
-## 1. 先读取 agent.md 规范（必须）
-
-安装开始前，先读取并遵守：
-
-`./resources/agent-md.md`
-
-必须确保流程满足该文档关键要求：
-
-- ACP 建连后自动上传 `agent.md`（哈希不变会跳过）
-- 支持手动同步：`/acp-sync`
-- `agentMdPath` 必须配置正确
-- `agent.md` 格式必须合法（YAML frontmatter + Markdown 正文）
-
----
-
-## 2. 环境检查（失败即停止）
+## 1. 环境检查（失败即停止）
 
 执行：
 
@@ -52,7 +37,7 @@ ls ~/.openclaw/openclaw.json 2>/dev/null && echo "OK" || echo "ERROR: OpenClaw n
 
 ---
 
-## 3. 安装/更新插件
+## 2. 安装/更新插件
 
 执行：
 
@@ -83,7 +68,7 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 ---
 
-## 4. 判定当前配置模式（单身份/多身份）
+## 3. 判定当前配置模式（单身份/多身份）
 
 读取 `~/.openclaw/openclaw.json` 后按规则判定：
 
@@ -91,7 +76,7 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 - **单身份模式**：`channels.acp.agentName` 存在且 `identities` 为空/不存在
 - **未配置**：两者都不存在（默认按单身份新装）
 
-### 4.1 多身份时的强制询问
+### 3.1 多身份时的强制询问
 
 如果是多身份，且用户未明确“配置哪个身份”，必须先问：
 
@@ -99,13 +84,13 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 拿到后记为 `TARGET_ACCOUNT_ID`。
 
-### 4.2 单身份时
+### 3.2 单身份时
 
 直接设 `TARGET_ACCOUNT_ID=default`，不要再问 accountId。
 
 ---
 
-## 5. 采集与生成参数
+## 4. 采集与生成参数
 
 维护变量：
 
@@ -117,7 +102,7 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 - `SEED_PASSWORD`
 - `AID={AGENT_NAME}.{DOMAIN}`
 
-### 5.1 询问 agentName（必填）
+### 4.1 询问 agentName（必填）
 
 提示：
 
@@ -128,7 +113,7 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 多身份补充：
 - 若 `identities[TARGET_ACCOUNT_ID].agentName` 已存在，先问用户“沿用旧值还是改新值”。
 
-### 5.2 询问 ownerAid（强烈建议）
+### 4.2 询问 ownerAid（强烈建议）
 
 提示：
 
@@ -138,7 +123,7 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 - 输入“跳过” => `OWNER_AID=""`
 - 否则必须包含 `.`，不满足则重问
 
-### 5.3 自动生成（用户没给才生成）
+### 4.3 自动生成（用户没给才生成）
 
 - `SEED_PASSWORD`: `require('crypto').randomBytes(16).toString('hex')`
 - `DOMAIN`: `agentcp.io`
@@ -149,7 +134,7 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 ---
 
-## 6. 写入 openclaw.json（深度合并，不覆盖其他字段）
+## 5. 写入 openclaw.json（深度合并，不覆盖其他字段）
 
 先备份：
 
@@ -157,7 +142,24 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 ```
 
-### 6.1 单身份写法（MODE=single）
+### 5.0 多身份模式：在 agents.list[] 中添加 Agent（关键）
+
+多身份模式下，`agentId` 必须引用 `agents.list[]` 中已定义的 Agent。如果目标 Agent 不存在，需要先添加：
+
+```json
+"agents": {
+  "list": [
+    { "id": "main", "default": true },
+    { "id": "{AGENT_NAME}" }
+  ]
+}
+```
+
+> 核心代码会自动为非默认 Agent 分配 workspace 目录 `~/.openclaw/workspace-{AGENT_NAME}`。也可以通过 `workspace` 字段指定自定义路径。
+
+单身份模式跳过此步。
+
+### 5.1 单身份写法（MODE=single）
 
 写入/更新 `channels.acp`：
 
@@ -174,7 +176,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 }
 ```
 
-### 6.2 多身份写法（MODE=multi）
+### 5.2 多身份写法（MODE=multi）
 
 写入/更新 `channels.acp.identities.{TARGET_ACCOUNT_ID}`：
 
@@ -184,7 +186,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
   "agentAidBindingMode": "strict",
   "identities": {
     "{TARGET_ACCOUNT_ID}": {
-      "agentName": "{AGENT_NAME}",
+      "agentId": "{AGENT_NAME}",
       "domain": "{DOMAIN}",
       "seedPassword": "{SEED_PASSWORD}",
       "ownerAid": "{OWNER_AID}",
@@ -195,11 +197,13 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 }
 ```
 
+> 注意：多身份模式使用 `agentId`（不是 `agentName`）。`agentId` 引用 `agents.list[]` 中的 Agent，fullAid = agentId + "." + domain。
+
 要求：
 - 多身份模式下只改目标身份条目，不删除其他身份。
 - 保留无关配置不变。
 
-### 6.3 两种模式都要开启插件
+### 5.3 两种模式都要开启插件
 
 ```json
 "plugins": {
@@ -211,7 +215,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 }
 ```
 
-### 6.4 写入/校验 bindings（关键）
+### 5.4 写入/校验 bindings（关键）
 
 `strict` 模式默认要求 1:1 绑定，必须确保存在：
 
@@ -224,7 +228,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 - 如果存在同 `accountId` 的错误绑定，先提示并修正为 1:1。
 - 多身份模式下，不能只改 `channels.acp.identities` 而不改 `bindings`。
 
-### 6.5 配置合法性校验
+### 5.5 配置合法性校验
 
 ```bash
 node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;const p=c.plugins?.entries?.acp;const b=Array.isArray(c.bindings)?c.bindings:[];const hasMode=!!(a?.agentAidBindingMode==='strict'||a?.agentAidBindingMode==='flex');const singleOk=!!(a?.enabled&&a?.agentName&&/^[a-z0-9-]+$/.test(a.agentName));const multiOk=!!(a?.enabled&&a?.identities&&Object.keys(a.identities).length>0);const bindOk=b.some(x=>x?.match?.channel==='acp');if((singleOk||multiOk)&&p?.enabled&&hasMode&&bindOk)console.log('Config OK');else{console.log('ERROR');process.exit(1)}"
@@ -238,7 +242,7 @@ cp ~/.openclaw/openclaw.json.bak ~/.openclaw/openclaw.json
 
 ---
 
-## 7. 正确创建龙虾身份证 agent.md（必须）
+## 6. 正确创建龙虾身份证 agent.md（必须）
 
 创建目录：
 
@@ -250,7 +254,7 @@ mkdir -p ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public
 
 `~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md`
 
-### 7.1 agent.md 文档格式规范（必须严格遵守）
+### 6.1 agent.md 文档格式规范（必须严格遵守）
 
 必须满足以下格式：
 
@@ -299,9 +303,9 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 
 ---
 
-## 8. agent.md 自动同步说明（必须给用户）
+## 7. agent.md 自动同步说明（必须给用户）
 
-根据 `skill/acp/resources/agent-md.md`，必须明确告诉用户：
+必须明确告诉用户：
 
 1. ACP 建连后插件会自动上传 `agent.md`（无变化会跳过）。
 2. 本次已写入 `agentMdPath` 并创建对应 `agent.md` 文件。
@@ -309,9 +313,9 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 
 ---
 
-## 9. 安装验证 + ACP 网络预检（必须通过）
+## 8. 安装验证 + ACP 网络预检（必须通过）
 
-### 9.1 本地文件验证
+### 8.1 本地文件验证
 
 ```bash
 ls ~/.openclaw/extensions/acp/index.ts && echo "Plugin OK" || echo "ERROR: Plugin missing"
@@ -322,7 +326,7 @@ ls ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md && echo "agent.md O
 
 若有 `ERROR`，立即停止。
 
-### 9.2 ACP 网络预检（关键）
+### 8.2 ACP 网络预检（关键）
 
 执行（把 `{TARGET_ACCOUNT_ID}` 替换成 `default` 或目标 accountId）：
 
@@ -333,18 +337,18 @@ const SF=path.join(os.homedir(),'.acp-storage','localStorage.json');
 let sd={};try{if(fs.existsSync(SF))sd=JSON.parse(fs.readFileSync(SF,'utf8'))}catch{}
 const lsp={getItem(k){return sd[k]??null},setItem(k,v){sd[k]=v;fs.writeFileSync(SF,JSON.stringify(sd,null,2))},removeItem(k){delete sd[k];fs.writeFileSync(SF,JSON.stringify(sd,null,2))},clear(){sd={};fs.writeFileSync(SF,JSON.stringify(sd))},key(i){return Object.keys(sd)[i]??null},get length(){return Object.keys(sd).length}};
 globalThis.window=globalThis.window||{};globalThis.window.localStorage=lsp;globalThis.localStorage=lsp;
-const { AgentManager } = require(os.homedir()+'/.openclaw/extensions/acp/node_modules/acp-ts');
+const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/acp/node_modules/acp-ts');
 const cfg=JSON.parse(fs.readFileSync(path.join(os.homedir(),'.openclaw','openclaw.json'),'utf8'));
 const ac=cfg.channels?.acp||{};
 const accountId='{TARGET_ACCOUNT_ID}';
 const hasIdentities=!!(ac.identities&&Object.keys(ac.identities).length>0);
 const target=hasIdentities ? (ac.identities?.[accountId]||null) : ac;
-if(!target||!target.agentName){console.error('PREFLIGHT_FAIL:'+accountId+': account config missing');process.exit(1)}
-const aid=target.agentName+'.'+(target.domain||'agentcp.io');
+const agentId=target?.agentId||target?.agentName;
+if(!target||!agentId){console.error('PREFLIGHT_FAIL:'+accountId+': account config missing');process.exit(1)}
+const aid=agentId+'.'+(target.domain||'agentcp.io');
 (async()=>{
   try{
-    const mgr=AgentManager.getInstance();
-    const acp=mgr.initACP(target.domain||'agentcp.io',target.seedPassword||'',path.join(os.homedir(),'.acp-storage'));
+    const acp=new AgentCP(target.domain||'agentcp.io',target.seedPassword||'',path.join(os.homedir(),'.acp-storage'),{persistGroupMessages:true});
     let loaded=await acp.loadAid(aid);
     if(!loaded) loaded=await acp.createAid(aid);
     const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT')),10000));
@@ -364,13 +368,13 @@ const aid=target.agentName+'.'+(target.domain||'agentcp.io');
 判定：
 - 含 `PREFLIGHT_PASS:` => 成功
 - 含 `PREFLIGHT_FAIL:` => 失败并停止，按错误引导：
-  - `is used by another user` / `创建失败`：让用户换 `agentName`，回到第 5 步
+  - `is used by another user` / `创建失败`：让用户换 `agentName`，回到第 4 步
   - `TIMEOUT`：提示网络/代理问题
   - `signIn`：提示密码不匹配
 
 ---
 
-## 10. 完成汇报（必须包含 agent.md、同步信息与 bindings）
+## 9. 完成汇报（必须包含 agent.md、同步信息与 bindings）
 
 统一输出：
 
