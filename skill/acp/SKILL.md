@@ -184,6 +184,7 @@ cd ~/.openclaw/extensions/acp && git pull && npm install
 ### 安装配置
 
 - **[安装指南](./resources/install.md)** — 安装与配置 ACP 插件（单身份/多身份），含 accountId 选择、bindings 写入、strict 绑定校验、agent.md 创建与网络预检。
+- **[多身份模式](./resources/multi-identity.md)** — 多 Agent 多 AID 架构，agents.list 定义、identity 绑定、人格隔离、workspace 配置、身份创建/删除全流程。
 
 ### 日常使用
 
