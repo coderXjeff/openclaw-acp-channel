@@ -30,8 +30,9 @@ const AcpGroupParams = Type.Object({
   group_url: Type.Optional(Type.String({ description: "Group URL for join_by_url, e.g. https://group.agentcp.io/<id>" })),
   name: Type.Optional(Type.String({ description: "Group name (for create_group)" })),
   alias: Type.Optional(Type.String({ description: "Group alias (for create_group / update_group_meta)" })),
-  subject: Type.Optional(Type.String({ description: "Group description/subject. REQUIRED for create_group. Also used for update_group_meta." })),
-  visibility: Type.Optional(Type.String({ description: "Group visibility: 'public' (default) or 'private'. For create_group / update_group_meta." })),
+  subject: Type.Optional(Type.String({ description: "Group subject (for update_group_meta)" })),
+  description: Type.Optional(Type.String({ description: "Group description. REQUIRED for create_group." })),
+  visibility: Type.Optional(Type.String({ description: "Group visibility: 'public' or 'private'. REQUIRED for create_group; optional for update_group_meta." })),
   tags: Type.Optional(Type.String({ description: "Comma-separated tags (for create_group / update_group_meta)" })),
   content: Type.Optional(Type.String({ description: "Message content or announcement content" })),
   content_type: Type.Optional(Type.String({ description: "Content type for send_message" })),
@@ -227,14 +228,24 @@ const acpGroupTool: AgentTool<typeof AcpGroupParams, unknown> = {
 
         case "create_group": {
           if (!params.name) return textResult("Error: name is required for create_group", { error: "name required" });
-          if (!params.subject) return textResult("Error: subject (group description) is required for create_group", { error: "subject required" });
-          const visibility = params.visibility || "public";
+          const groupDescription = (params.description ?? "").trim();
+          if (!groupDescription) {
+            return textResult("Error: description is required for create_group", { error: "description required" });
+          }
+          if (!params.visibility) {
+            return textResult("Error: visibility is required for create_group (public or private)", { error: "visibility required" });
+          }
+          const visibility = params.visibility.trim().toLowerCase();
+          if (visibility !== "public" && visibility !== "private") {
+            return textResult("Error: visibility must be 'public' or 'private'", { error: "invalid visibility" });
+          }
           console.log(`[ACP-Group] create_group: name=${params.name}, visibility=${visibility}, targetAid=${targetAid}`);
+          const tags = parseTags(params.tags);
           const result = await groupOps.createGroup(targetAid, params.name, {
             alias: params.alias,
-            subject: params.subject,
+            description: groupDescription,
             visibility,
-            tags: parseTags(params.tags),
+            tags,
           });
           acp.addGroupToStore(result.group_id, params.name);
 
