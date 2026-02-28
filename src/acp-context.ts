@@ -125,8 +125,9 @@ export function loadContextForGroup(params: {
   const identityMemory = readFileSafe(path.join(idDir, "MEMORY.md"));
   if (identityMemory) parts.push(identityMemory);
 
-  const myRole = readFileSafe(path.join(gDir, "MY_ROLE.md"));
-  if (myRole) parts.push(myRole);
+  // agent.md 替代 MY_ROLE.md — 包含身份、技能、能力，agent 在群里不会"忘了自己是谁"
+  const agentMd = readFileSafe(path.join(workspaceDir, "agent.md"));
+  if (agentMd) parts.push(agentMd);
 
   const groupProfile = readFileSafe(path.join(gDir, "GROUP.md"));
   if (groupProfile) parts.push(groupProfile);

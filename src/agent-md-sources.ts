@@ -69,7 +69,8 @@ function loadSkillsFromDir(skillsDir: string): string | undefined {
   const summaries: string[] = [];
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+    // symlink 指向目录也要扫描（如共享 skill）
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
     const skillMdPath = path.join(skillsDir, entry.name, "SKILL.md");
     try {
       if (!fs.existsSync(skillMdPath)) continue;
@@ -102,10 +103,19 @@ function extractSkillName(content: string, dirName: string): string {
  * 从 SKILL.md 提取描述（第一段非标题非空行）
  */
 function extractSkillDescription(content: string): string {
+  // 优先从 frontmatter description 字段提取
+  const fmMatch = content.match(/^---\n[\s\S]*?^description:\s*(.+)/m);
+  if (fmMatch) {
+    const desc = fmMatch[1].trim();
+    return desc.length > 100 ? desc.substring(0, 100) + "..." : desc;
+  }
+  // fallback: 跳过 frontmatter，取第一段正文
+  let inFrontmatter = false;
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("---")) continue;
-    // 截取前 100 字符
+    if (trimmed === "---") { inFrontmatter = !inFrontmatter; continue; }
+    if (inFrontmatter) continue;
+    if (!trimmed || trimmed.startsWith("#")) continue;
     return trimmed.length > 100 ? trimmed.substring(0, 100) + "..." : trimmed;
   }
   return "";
