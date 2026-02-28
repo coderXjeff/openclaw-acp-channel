@@ -77,7 +77,10 @@ function loadSkillsFromDir(skillsDir: string): string | undefined {
       const content = fs.readFileSync(skillMdPath, "utf8");
       const name = extractSkillName(content, entry.name);
       const desc = extractSkillDescription(content);
-      summaries.push(desc ? `- **${name}**: ${desc}` : `- **${name}**`);
+      const usage = extractSkillUsage(content);
+      let summary = desc ? `- **${name}**: ${desc}` : `- **${name}**`;
+      if (usage) summary += `\n${usage}`;
+      summaries.push(summary);
     } catch {
       // skip unreadable skill files
     }
@@ -119,4 +122,28 @@ function extractSkillDescription(content: string): string {
     return trimmed.length > 100 ? trimmed.substring(0, 100) + "..." : trimmed;
   }
   return "";
+}
+
+/**
+ * 从 SKILL.md 提取关键命令用法
+ * 扫描 bash 代码块中的注释行（# 开头），作为功能要点
+ */
+function extractSkillUsage(content: string): string {
+  const lines = content.split("\n");
+  const features: string[] = [];
+  let inBash = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.match(/^```bash/)) { inBash = true; continue; }
+    if (trimmed === "```") { inBash = false; continue; }
+    if (inBash && trimmed.startsWith("# ")) {
+      const feature = trimmed.replace(/^#\s+/, "");
+      if (feature.length > 1 && features.length < 6) {
+        features.push(`  - ${feature}`);
+      }
+    }
+  }
+
+  return features.length > 0 ? features.join("\n") : "";
 }
