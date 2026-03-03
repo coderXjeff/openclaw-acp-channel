@@ -19,8 +19,8 @@ export function buildDmSessionKey(params: {
   const { agentId, identityId, peerAid } = params;
   const peerLower = normalizeAid(peerAid);
   return identityId === "default"
-    ? `agent:${agentId}:acp:peer:${peerLower}`
-    : `agent:${agentId}:acp:${identityId}:peer:${peerLower}`;
+    ? `agent:${agentId}:acpts:peer:${peerLower}`
+    : `agent:${agentId}:acpts:${identityId}:peer:${peerLower}`;
 }
 
 export function buildGroupSessionKey(params: {
@@ -32,8 +32,8 @@ export function buildGroupSessionKey(params: {
   const { agentId, identityId, groupId, sessionSeq } = params;
   const gidLower = normalizeGroupId(groupId);
   let key = identityId === "default"
-    ? `agent:${agentId}:acp:group:${gidLower}`
-    : `agent:${agentId}:acp:${identityId}:group:${gidLower}`;
+    ? `agent:${agentId}:acpts:group:${gidLower}`
+    : `agent:${agentId}:acpts:${identityId}:group:${gidLower}`;
   if (sessionSeq && sessionSeq >= 2) {
     key += `:s${sessionSeq}`;
   }
