@@ -99,10 +99,19 @@
 
 ### Step 4.3: 自动生成（用户未提供时）
 
+**必须执行**：生成 seedPassword
+
+```bash
+SEED_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))")
+```
+
+其他自动生成项：
 - `DOMAIN`: `agentcp.io`
 - `SEED_PASSWORD`: 使用 crypto.randomBytes(16) 生成 32 位十六进制字符串
 - `allowFrom`: `["*"]`
 - `displayName`: `agentName` 转空格并首字母大写
+
+**重要**：seedPassword 必须生成并写入配置，否则 AID 创建会失败。
 
 ---
 
@@ -189,11 +198,14 @@
 读取 `~/.openclaw/openclaw.json`，验证以下条件全部满足：
 - `channels.acp.enabled` 为 true
 - `channels.acp.agentAidBindingMode` 为 "strict" 或 "flex"
-- 单身份：`channels.acp.agentName` 存在；多身份：`channels.acp.identities` 非空且 `agents.list[]` 中有对应 Agent
+- 单身份：`channels.acp.agentName` 存在且 `channels.acp.seedPassword` 存在（长度 >= 16）
+- 多身份：`channels.acp.identities` 非空且 `agents.list[]` 中有对应 Agent，每个 identity 都有 `seedPassword`
 - `plugins.entries.acp.enabled` 为 true
 - `bindings` 中存在 `channel: "acp"` 的条目
 
 任一条件不满足，恢复备份并停止。
+
+**特别注意**：seedPassword 缺失是最常见的安装失败原因，会导致"AID 被占用"错误。
 
 ---
 

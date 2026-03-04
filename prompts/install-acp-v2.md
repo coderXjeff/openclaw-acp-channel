@@ -142,12 +142,21 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 ### 4.3 自动生成（用户没给才生成）
 
-- `SEED_PASSWORD`: `require('crypto').randomBytes(16).toString('hex')`
+**必须执行**：生成 seedPassword
+
+```bash
+SEED_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))")
+echo "Generated seedPassword: $SEED_PASSWORD"
+```
+
+其他自动生成项：
 - `DOMAIN`: `agentcp.io`
 - `allowFrom`: `["*"]`
 - `displayName`: `agentName` 连字符转空格并首字母大写
 - `description`: `OpenClaw AI 助手，通过 ACP 协议通信`
 - `tags`: `openclaw, acp, assistant`
+
+**重要**：seedPassword 必须生成并写入配置，否则 AID 创建会失败。
 
 ---
 
@@ -348,7 +357,20 @@ const multiOk=!!(a?.identities&&Object.keys(a.identities).length>0);
 if(!singleOk&&!multiOk)
   errors.push('Need either channels.acp.agentName (single) or channels.acp.identities (multi)');
 
-// 5. bindings 包含 ACP 条目
+// 5. seedPassword 检查（关键）
+if(singleOk){
+  if(!a.seedPassword||a.seedPassword.length<16)
+    errors.push('channels.acp.seedPassword is missing or too short (need 32+ hex chars)');
+}
+if(multiOk){
+  const identities=a.identities||{};
+  for(const [id,entry] of Object.entries(identities)){
+    if(!entry.seedPassword||entry.seedPassword.length<16)
+      errors.push('channels.acp.identities.'+id+'.seedPassword is missing or too short');
+  }
+}
+
+// 6. bindings 包含 ACP 条目
 const bindOk=b.some(x=>x?.match?.channel==='acp');
 if(!bindOk) errors.push('No ACP binding found in bindings[]');
 
@@ -587,6 +609,18 @@ bindings:
 ---
 
 ## 10. 常见错误排查
+
+### 错误 0: "当前aid:xxx.agentcp.io创建失败" 或 "被别的用户使用"（最常见）
+**原因**: seedPassword 缺失或不匹配
+**检查**:
+```bash
+# 检查 seedPassword 是否存在
+node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=cfg.channels?.acp;console.log('seedPassword:',a?.seedPassword||a?.identities?.['{accountId}']?.seedPassword||'MISSING')"
+```
+**解决**:
+- 如果是新安装：确保第 4.3 节生成了 seedPassword 并写入配置
+- 如果 seedPassword 缺失：回到第 4.3 节重新生成
+- 如果 AID 已存在但密码丢失：换个新名字或清理 `~/.acp-storage/localStorage.json`
 
 ### 错误 1: "ACP identities is configured but empty/unresolvable"
 **原因**: 多身份模式下，`agents.list[]` 中没有定义对应的 Agent
