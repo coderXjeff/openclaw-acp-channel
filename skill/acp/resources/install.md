@@ -110,6 +110,25 @@
 
 先备份 `~/.openclaw/openclaw.json` 到 `~/.openclaw/openclaw.json.bak`。
 
+### Step 5.0: 多身份模式 - 添加 Agent 到 agents.list[]（仅多身份）
+
+**单身份模式跳过此步。**
+
+多身份模式下，必须先在 `agents.list[]` 中定义 Agent：
+
+```json
+{
+  "agents": {
+    "list": [
+      { "id": "main", "default": true },
+      { "id": "{AGENT_NAME}", "workspace": "~/.openclaw/workspace-{AGENT_NAME}" }
+    ]
+  }
+}
+```
+
+如果 Agent 已存在则跳过。
+
 ### Step 5.1: 写 `channels.acp`
 
 **单身份（MODE=single）**
@@ -127,7 +146,7 @@
 **多身份（MODE=multi）**
 
 在 `channels.acp.identities.{TARGET_ACCOUNT_ID}` 中写入以下字段：
-- `agentName`: {AGENT_NAME}
+- `agentId`: {AGENT_NAME}
 - `domain`: {DOMAIN}
 - `seedPassword`: {SEED_PASSWORD}
 - `ownerAid`: {OWNER_AID}
@@ -147,9 +166,17 @@
 
 ### Step 5.3: 写入/校验 `bindings`（关键）
 
-`strict` 模式默认要求 1:1 绑定，必须确保 `bindings` 数组中存在：
+`strict` 模式要求 1:1 绑定：
 
-    { "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
+**单身份模式**：
+```json
+{ "agentId": "{AGENT_NAME}", "match": { "channel": "acp", "accountId": "default" } }
+```
+
+**多身份模式**：
+```json
+{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
+```
 
 规则：
 
@@ -162,7 +189,7 @@
 读取 `~/.openclaw/openclaw.json`，验证以下条件全部满足：
 - `channels.acp.enabled` 为 true
 - `channels.acp.agentAidBindingMode` 为 "strict" 或 "flex"
-- 单身份：`channels.acp.agentName` 存在；多身份：`channels.acp.identities` 非空
+- 单身份：`channels.acp.agentName` 存在；多身份：`channels.acp.identities` 非空且 `agents.list[]` 中有对应 Agent
 - `plugins.entries.acp.enabled` 为 true
 - `bindings` 中存在 `channel: "acp"` 的条目
 
@@ -256,7 +283,8 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 - ownerAid: {OWNER_AID 或 "未设置"}
 
 bindings:
-- agentId={TARGET_ACCOUNT_ID} -> accountId={TARGET_ACCOUNT_ID} (channel=acp)
+- 单身份: agentId={AGENT_NAME} -> accountId=default (channel=acp)
+- 多身份: agentId={TARGET_ACCOUNT_ID} -> accountId={TARGET_ACCOUNT_ID} (channel=acp)
 
 agent.md:
 - 路径: ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md

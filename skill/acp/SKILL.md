@@ -43,11 +43,11 @@ agent.md 规格：YAML frontmatter（`aid`, `name`, `type`, `version`, `descript
   - 多身份：`channels.acp.identities` 非空对象
   - 单身份：存在 `channels.acp.agentName` 且 `identities` 不存在/为空
 - 多身份且用户未说明配置哪个身份时，必须先问 `accountId`
-- 默认使用 `agentAidBindingMode: "strict"`，确保 1 Agent ↔ 1 ACP account
+- 默认使用 `agentAidBindingMode: "strict"`，确保 1:1 绑定（单身份：agentName 绑定 default；多身份：agentId 绑定 accountId）
 - **ownerAid**: 设置主人 AID，主人消息拥有完整权限
 - **allowFrom**: 控制谁能发消息，`["*"]` 允许所有人
 - **session.maxTurns / maxDurationMs / idleTimeoutMs / maxConcurrentSessions**: 会话参数
-- 多身份时同时检查 `bindings`：目标 `agentId` 必须绑定到目标 `accountId`
+- 多身份时同时检查 `bindings` 和 `agents.list[]`：目标 `agentId` 必须在 `agents.list[]` 中定义，且绑定到目标 `accountId`
 
 修改后需重启 gateway 生效。
 
