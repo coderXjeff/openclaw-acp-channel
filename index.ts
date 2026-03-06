@@ -59,12 +59,68 @@ const plugin = {
   register(api: OpenClawPluginApi) {
     console.log("[ACP] Registering ACP channel plugin");
 
-    // 自动迁移：检测旧配置并提示
+    // 自动迁移：检测旧配置并自动迁移
     const hasOldConfig = !!(api.config.channels as any)?.acp;
     if (hasOldConfig) {
-      console.warn("[ACP] ⚠️  检测到旧配置 channels.acp，建议运行迁移脚本：");
-      console.warn("[ACP]     cd ~/.openclaw/extensions/evol && node migrate-to-evol.cjs");
-      console.warn("[ACP]     插件已兼容旧配置，但建议尽快迁移到 channels.evol");
+      console.log("[ACP] 🔄 检测到旧配置 channels.acp，正在自动迁移...");
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const os = require('os');
+        const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+        const backupPath = configPath + '.pre-evol-migration';
+
+        // 备份配置
+        if (!fs.existsSync(backupPath)) {
+          fs.copyFileSync(configPath, backupPath);
+          console.log("[ACP] ✓ 配置已备份到: " + backupPath);
+        }
+
+        // 读取配置
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        let changed = false;
+
+        // 迁移 channels
+        if (config.channels?.acp) {
+          config.channels.evol = config.channels.acp;
+          delete config.channels.acp;
+          console.log("[ACP] ✓ channels.acp → channels.evol");
+          changed = true;
+        }
+
+        // 迁移 plugins
+        if (config.plugins?.entries?.acp) {
+          config.plugins.entries.evol = config.plugins.entries.acp;
+          delete config.plugins.entries.acp;
+          console.log("[ACP] ✓ plugins.entries.acp → plugins.entries.evol");
+          changed = true;
+        }
+
+        // 迁移 bindings
+        if (Array.isArray(config.bindings)) {
+          let count = 0;
+          config.bindings.forEach((binding: any) => {
+            if (binding?.match?.channel === 'acp') {
+              binding.match.channel = 'evol';
+              count++;
+            }
+          });
+          if (count > 0) {
+            console.log(`[ACP] ✓ 更新了 ${count} 个 bindings: channel: acp → evol`);
+            changed = true;
+          }
+        }
+
+        // 写回配置
+        if (changed) {
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          console.log("[ACP] ✅ 配置迁移完成！");
+          console.log("[ACP] ⚠️  请重启 Gateway 以应用新配置");
+        }
+      } catch (error) {
+        console.error("[ACP] ❌ 自动迁移失败:", error);
+        console.error("[ACP] 请手动运行: cd ~/.openclaw/extensions/evol && node migrate-to-evol.cjs");
+      }
     }
 
     // 保存 runtime 引用
