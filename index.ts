@@ -59,6 +59,14 @@ const plugin = {
   register(api: OpenClawPluginApi) {
     console.log("[ACP] Registering ACP channel plugin");
 
+    // 自动迁移：检测旧配置并提示
+    const hasOldConfig = !!(api.config.channels as any)?.acp;
+    if (hasOldConfig) {
+      console.warn("[ACP] ⚠️  检测到旧配置 channels.acp，建议运行迁移脚本：");
+      console.warn("[ACP]     cd ~/.openclaw/extensions/evol && node migrate-to-evol.cjs");
+      console.warn("[ACP]     插件已兼容旧配置，但建议尽快迁移到 channels.evol");
+    }
+
     // 保存 runtime 引用
     setAcpRuntime(api.runtime);
 
