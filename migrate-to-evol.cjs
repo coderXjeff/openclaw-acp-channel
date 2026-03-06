@@ -72,7 +72,7 @@ if (changed) {
   console.log('✅ 迁移完成！\n');
   console.log('下一步：');
   console.log('1. 清理旧 session: rm -rf ~/.openclaw/agents/*/sessions/*');
-  console.log('2. 启动 Gateway: cd ~/openclaw && pnpm openclaw gateway start');
+  console.log('2. 启动 Gateway: cd ~/openclaw && pnpm openclaw gateway run');
 } else {
   console.log('\n⚠️  未发现需要迁移的内容');
 }
