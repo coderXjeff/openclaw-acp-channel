@@ -5,7 +5,7 @@ import { sendAcpMessage, parseTarget } from "./outbound.js";
 const providerId = "evol";
 
 function isAcpEnabled(cfg: any): boolean {
-  const acpConfig = cfg.channels?.evol as AcpChannelConfig | undefined;
+  const acpConfig = (cfg.channels?.evol || cfg.channels?.acp) as AcpChannelConfig | undefined;
   if (!acpConfig?.enabled) return false;
   const hasLegacy = !!acpConfig.agentName?.trim();
   const hasIdentities = !!acpConfig.identities && Object.keys(acpConfig.identities).length > 0;

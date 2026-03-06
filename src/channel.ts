@@ -39,7 +39,8 @@ function normalizeOwnerAid(raw: string | string[] | undefined): string[] {
 // 配置适配器
 const acpConfigAdapter = {
   listAccountIds: (cfg: any): string[] => {
-    const acpConfig = cfg.channels?.evol as AcpChannelConfig | undefined;
+    // 兼容旧配置：同时支持 channels.evol 和 channels.acp
+    const acpConfig = (cfg.channels?.evol || cfg.channels?.acp) as AcpChannelConfig | undefined;
     if (!acpConfig?.enabled) {
       return [];
     }
@@ -58,7 +59,8 @@ const acpConfigAdapter = {
   },
 
   resolveAccount: (cfg: any, accountId?: string | null): ResolvedAcpAccount => {
-    const acpConfig = cfg.channels?.evol as AcpChannelConfig | undefined;
+    // 兼容旧配置：同时支持 channels.evol 和 channels.acp
+    const acpConfig = (cfg.channels?.evol || cfg.channels?.acp) as AcpChannelConfig | undefined;
 
     const identities = acpConfig?.identities ?? {};
     const identityIds = Object.keys(identities);

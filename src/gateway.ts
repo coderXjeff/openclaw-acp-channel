@@ -17,7 +17,8 @@ export const acpGatewayAdapter: ChannelGatewayAdapter<ResolvedAcpAccount> = {
       return;
     }
 
-    const acpConfig = ctx.cfg.channels?.evol as AcpChannelConfig | undefined;
+    // 兼容旧配置：同时支持 channels.evol 和 channels.acp
+    const acpConfig = (ctx.cfg.channels?.evol || ctx.cfg.channels?.acp) as AcpChannelConfig | undefined;
     if (!acpConfig) {
       log.error(`[${ctx.accountId}] No ACP config found`);
       ctx.setStatus({
