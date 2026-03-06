@@ -5,7 +5,7 @@
 
 import * as path from "path";
 
-const ACP_DIR = "acp";
+const ACP_DIR = "evol";
 const IDENTITIES_DIR = "identities";
 const PEERS_DIR = "peers";
 const GROUPS_DIR = "groups";

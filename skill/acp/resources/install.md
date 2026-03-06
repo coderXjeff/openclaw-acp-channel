@@ -50,8 +50,8 @@
 
 读取 `~/.openclaw/openclaw.json`，按以下规则判定：
 
-- **多身份模式**：`channels.acp.identities` 为非空对象
-- **单身份模式**：`channels.acp.agentName` 存在且 `identities` 不存在或为空
+- **多身份模式**：`channels.evol.identities` 为非空对象
+- **单身份模式**：`channels.evol.agentName` 存在且 `identities` 不存在或为空
 - **未配置**：两者都不存在（按单身份新装处理）
 
 ### Step 3.1: 多身份下的强制提问
@@ -138,11 +138,11 @@ SEED_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(16).toString(
 
 如果 Agent 已存在则跳过。
 
-### Step 5.1: 写 `channels.acp`
+### Step 5.1: 写 `channels.evol`
 
 **单身份（MODE=single）**
 
-在 `channels.acp` 中写入以下字段：
+在 `channels.evol` 中写入以下字段：
 - `enabled`: true
 - `agentAidBindingMode`: "strict"
 - `agentName`: {AGENT_NAME}
@@ -154,7 +154,7 @@ SEED_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(16).toString(
 
 **多身份（MODE=multi）**
 
-在 `channels.acp.identities.{TARGET_ACCOUNT_ID}` 中写入以下字段：
+在 `channels.evol.identities.{TARGET_ACCOUNT_ID}` 中写入以下字段：
 - `agentId`: {AGENT_NAME}
 - `domain`: {DOMAIN}
 - `seedPassword`: {SEED_PASSWORD}
@@ -179,29 +179,29 @@ SEED_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(16).toString(
 
 **单身份模式**：
 ```json
-{ "agentId": "{AGENT_NAME}", "match": { "channel": "acp", "accountId": "default" } }
+{ "agentId": "{AGENT_NAME}", "match": { "channel": "evol", "accountId": "default" } }
 ```
 
 **多身份模式**：
 ```json
-{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
+{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "evol", "accountId": "{TARGET_ACCOUNT_ID}" } }
 ```
 
 规则：
 
 - 如果 `bindings` 没有这条，追加。
 - 如果存在同 accountId 的错误绑定，先提示并修正为 1:1。
-- 多身份模式下，不能只改 `channels.acp.identities` 而不改 `bindings`。
+- 多身份模式下，不能只改 `channels.evol.identities` 而不改 `bindings`。
 
 ### Step 5.4: 配置合法性检查
 
 读取 `~/.openclaw/openclaw.json`，验证以下条件全部满足：
-- `channels.acp.enabled` 为 true
-- `channels.acp.agentAidBindingMode` 为 "strict" 或 "flex"
-- 单身份：`channels.acp.agentName` 存在且 `channels.acp.seedPassword` 存在（长度 >= 16）
-- 多身份：`channels.acp.identities` 非空且 `agents.list[]` 中有对应 Agent，每个 identity 都有 `seedPassword`
+- `channels.evol.enabled` 为 true
+- `channels.evol.agentAidBindingMode` 为 "strict" 或 "flex"
+- 单身份：`channels.evol.agentName` 存在且 `channels.evol.seedPassword` 存在（长度 >= 16）
+- 多身份：`channels.evol.identities` 非空且 `agents.list[]` 中有对应 Agent，每个 identity 都有 `seedPassword`
 - `plugins.entries.acp.enabled` 为 true
-- `bindings` 中存在 `channel: "acp"` 的条目
+- `bindings` 中存在 `channel: "evol"` 的条目
 
 任一条件不满足，恢复备份并停止。
 

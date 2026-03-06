@@ -56,12 +56,12 @@ ACP 采用 4 层会话终止机制：
 
 ### 调整会话参数
 
-编辑 `~/.openclaw/openclaw.json` 中 `channels.acp.session`：
+编辑 `~/.openclaw/openclaw.json` 中 `channels.evol.session`：
 
 ```json
 {
   "channels": {
-    "acp": {
+    "evol": {
       "session": {
         "maxTurns": 30,
         "maxDurationMs": 300000,

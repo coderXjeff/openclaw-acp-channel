@@ -26,7 +26,7 @@
 **位置**: 第 5.4 节
 
 **问题**:
-- 文档说 `{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }`
+- 文档说 `{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "evol", "accountId": "{TARGET_ACCOUNT_ID}" } }`
 - 但根据代码 `src/binding-policy.ts:69-74`，**strict 模式要求 agentId === accountId**
 - 多身份模式下，`agentId` 应该等于 `accountId`（推荐 1:1 命名）
 
@@ -37,10 +37,10 @@
 **修复建议**:
 ```json
 // 单身份模式
-{ "agentId": "{AGENT_NAME}", "match": { "channel": "acp", "accountId": "default" } }
+{ "agentId": "{AGENT_NAME}", "match": { "channel": "evol", "accountId": "default" } }
 
 // 多身份模式（推荐 1:1 命名）
-{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
+{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "evol", "accountId": "{TARGET_ACCOUNT_ID}" } }
 ```
 
 #### 3. 单身份模式的 bindings 配置错误
@@ -145,7 +145,7 @@
     ]
   },
   "channels": {
-    "acp": {
+    "evol": {
       "enabled": true,
       "agentAidBindingMode": "strict",
       "agentName": "my-bot",
@@ -159,12 +159,12 @@
   "bindings": [
     {
       "agentId": "my-bot",
-      "match": { "channel": "acp", "accountId": "default" }
+      "match": { "channel": "evol", "accountId": "default" }
     }
   ],
   "plugins": {
     "entries": {
-      "acp": { "enabled": true }
+      "evol": { "enabled": true }
     }
   }
 }
@@ -180,7 +180,7 @@
     ]
   },
   "channels": {
-    "acp": {
+    "evol": {
       "enabled": true,
       "agentAidBindingMode": "strict",
       "identities": {
@@ -198,12 +198,12 @@
   "bindings": [
     {
       "agentId": "work",
-      "match": { "channel": "acp", "accountId": "work" }
+      "match": { "channel": "evol", "accountId": "work" }
     }
   ],
   "plugins": {
     "entries": {
-      "acp": { "enabled": true }
+      "evol": { "enabled": true }
     }
   }
 }

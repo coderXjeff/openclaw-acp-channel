@@ -20,7 +20,7 @@
 ```json
 {
   "channels": {
-    "acp": {
+    "evol": {
       "ownerAid": "your-name.agentcp.io",
       "allowFrom": ["trusted-agent.agentcp.io", "another.agentcp.io"]
     }

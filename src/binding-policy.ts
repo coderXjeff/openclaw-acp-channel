@@ -38,7 +38,7 @@ export function analyzeAcpBindings(cfg: OpenClawConfig | undefined, acpConfig: A
 
   const agentToAccountsSet = new Map<string, Set<string>>();
   const accountToAgentsSet = new Map<string, Set<string>>();
-  const acpBindings = (cfg?.bindings ?? []).filter((binding) => binding?.match?.channel === "acp");
+  const acpBindings = (cfg?.bindings ?? []).filter((binding) => binding?.match?.channel === "evol");
   const hasAcpBindings = acpBindings.length > 0;
 
   for (const binding of acpBindings) {
@@ -61,7 +61,7 @@ export function analyzeAcpBindings(cfg: OpenClawConfig | undefined, acpConfig: A
       if (!identities[accountId]) {
         issues.push({
           level: mode === "strict" ? "error" : "warn",
-          message: `ACP binding accountId=${accountId} not found in channels.acp.identities`,
+          message: `ACP binding accountId=${accountId} not found in channels.evol.identities`,
         });
       }
       toSetMapPush(agentToAccountsSet, agentId, accountId);

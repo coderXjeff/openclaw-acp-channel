@@ -8,12 +8,12 @@ import type { AcpProbeResult } from "./status.js";
 
 // Channel 元数据
 const acpMeta = {
-  id: "acp" as const,
-  label: "ACP",
-  selectionLabel: "ACP (Agent Communication Protocol)",
-  docsPath: "/channels/acp",
+  id: "evol" as const,
+  label: "Evol",
+  selectionLabel: "Evol (Agent Communication Protocol)",
+  docsPath: "/channels/evol",
   blurb: "Connect to ACP network for agent-to-agent communication (no Python bridge needed)",
-  detailLabel: "ACP Network",
+  detailLabel: "Evol Network",
   systemImage: "network",
   order: 100,
 };
@@ -39,7 +39,7 @@ function normalizeOwnerAid(raw: string | string[] | undefined): string[] {
 // 配置适配器
 const acpConfigAdapter = {
   listAccountIds: (cfg: any): string[] => {
-    const acpConfig = cfg.channels?.acp as AcpChannelConfig | undefined;
+    const acpConfig = cfg.channels?.evol as AcpChannelConfig | undefined;
     if (!acpConfig?.enabled) {
       return [];
     }
@@ -58,7 +58,7 @@ const acpConfigAdapter = {
   },
 
   resolveAccount: (cfg: any, accountId?: string | null): ResolvedAcpAccount => {
-    const acpConfig = cfg.channels?.acp as AcpChannelConfig | undefined;
+    const acpConfig = cfg.channels?.evol as AcpChannelConfig | undefined;
 
     const identities = acpConfig?.identities ?? {};
     const identityIds = Object.keys(identities);
@@ -69,7 +69,7 @@ const acpConfigAdapter = {
     const selectedIdentity = selectedIdentityId ? identities[selectedIdentityId] : undefined;
 
     if (identityIds.length > 0 && normalizedAccountId && !selectedIdentity) {
-      throw new Error(`ACP account "${normalizedAccountId}" not found in channels.acp.identities`);
+      throw new Error(`ACP account "${normalizedAccountId}" not found in channels.evol.identities`);
     }
 
     if (selectedIdentity) {
@@ -112,7 +112,7 @@ const acpConfigAdapter = {
   },
 
   defaultAccountId: (cfg: any): string => {
-    const acpConfig = cfg.channels?.acp as AcpChannelConfig | undefined;
+    const acpConfig = cfg.channels?.evol as AcpChannelConfig | undefined;
     const identities = acpConfig?.identities ?? {};
     const identityIds = Object.keys(identities);
     if (identityIds.length > 0) {
@@ -139,7 +139,7 @@ const acpConfigAdapter = {
   }),
 
   resolveAllowFrom: (params: { cfg: any; accountId?: string | null }): string[] | undefined => {
-    const acpConfig = params.cfg.channels?.acp as AcpChannelConfig | undefined;
+    const acpConfig = params.cfg.channels?.evol as AcpChannelConfig | undefined;
     const accountId = params.accountId?.trim();
     if (accountId && acpConfig?.identities?.[accountId]) {
       // 与 resolveAccount 保持一致：identity 级优先，fallback 到 top-level
@@ -334,7 +334,7 @@ const acpGroupsAdapter = {
 
 // 导出 Channel 插件
 export const acpChannelPlugin: ChannelPlugin<ResolvedAcpAccount, AcpProbeResult> = {
-  id: "acp",
+  id: "evol",
   meta: acpMeta,
   capabilities: acpCapabilities,
   config: acpConfigAdapter,

@@ -13,7 +13,7 @@ const EXTENSION_DIR = path.resolve(
   process.env.HOME || "~",
   ".openclaw",
   "extensions",
-  "acp",
+  "evol",
 );
 
 function log(msg: string): void {

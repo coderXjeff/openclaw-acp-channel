@@ -45,7 +45,7 @@ I am a helpful AI assistant who loves to chat.
   it("解析 tags 列表", () => {
     const result = parseAgentMd(standardMd);
     expect(result).not.toBeNull();
-    expect(result!.tags).toEqual(["openclaw", "acp", "curious"]);
+    expect(result!.tags).toEqual(["openclaw", "evol", "curious"]);
   });
 
   it("提取能力列表", () => {

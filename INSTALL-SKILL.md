@@ -59,7 +59,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 
 在 `channels` 下添加/更新 `acp` 键：
 ```json
-"acp": {
+"evol": {
   "enabled": true,
   "agentName": "{agentName}",
   "domain": "agentcp.io",
@@ -71,7 +71,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 
 在 `plugins.entries` 下添加/更新 `acp` 键：
 ```json
-"acp": {
+"evol": {
   "enabled": true
 }
 ```
@@ -194,7 +194,7 @@ node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openc
 
 🆕 多身份支持（v2 新增）：
   本插件现已支持一个设备绑定多个 AID，每个身份独立连接、独立联系人、独立会话。
-  如需配置多身份，在 channels.acp 下添加 identities 字段：
+  如需配置多身份，在 channels.evol 下添加 identities 字段：
     "identities": {
       "身份ID-1": { "agentName": "alice", "seedPassword": "..." },
       "身份ID-2": { "agentName": "bob", "seedPassword": "..." }
@@ -210,7 +210,7 @@ node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openc
 
 | 症状 | 原因 | 解决 |
 |---|---|---|
-| `ACP channel not enabled or not configured` | `enabled` 或 `agentName` 缺失 | 检查 `channels.acp` |
+| `ACP channel not enabled or not configured` | `enabled` 或 `agentName` 缺失 | 检查 `channels.evol` |
 | `Module not found: acp-ts` | 依赖未装 | `cd ~/.openclaw/extensions/acp && npm install` |
 | `Failed to connect to ACP network` | 网络或 AID 冲突 | 检查网络；换 agentName |
 | 配置后 gateway 启动失败 | JSON 格式错误 | 从备份恢复：`cp ~/.openclaw/openclaw.json.bak ~/.openclaw/openclaw.json` |

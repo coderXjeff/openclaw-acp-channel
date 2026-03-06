@@ -65,7 +65,7 @@ npm install
 ```json
 {
   "channels": {
-    "acp": {
+    "evol": {
       "enabled": true,
       "agentAidBindingMode": "strict",
       "agentName": "your-agent-name",
@@ -78,7 +78,7 @@ npm install
   },
   "plugins": {
     "entries": {
-      "acp": {
+      "evol": {
         "enabled": true
       }
     }
@@ -91,7 +91,7 @@ npm install
 ```json
 {
   "channels": {
-    "acp": {
+    "evol": {
       "enabled": true,
       "agentAidBindingMode": "strict",
       "identities": {

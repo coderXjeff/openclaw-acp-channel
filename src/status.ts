@@ -108,10 +108,10 @@ export const acpStatusAdapter: ChannelStatusAdapter<ResolvedAcpAccount, AcpProbe
     for (const snap of accounts) {
       if (!snap.configured) {
         const fix = snap.accountId === "default"
-          ? "Set channels.acp.agentName or channels.acp.identities"
-          : `Set channels.acp.identities.${snap.accountId}.agentId`;
+          ? "Set channels.evol.agentName or channels.evol.identities"
+          : `Set channels.evol.identities.${snap.accountId}.agentId`;
         issues.push({
-          channel: "acp",
+          channel: "evol",
           accountId: snap.accountId,
           kind: "config",
           message: "Agent ID not configured",
@@ -121,17 +121,17 @@ export const acpStatusAdapter: ChannelStatusAdapter<ResolvedAcpAccount, AcpProbe
 
       if (snap.configured && !snap.enabled) {
         issues.push({
-          channel: "acp",
+          channel: "evol",
           accountId: snap.accountId,
           kind: "config",
           message: "ACP channel is configured but not enabled",
-          fix: "Set channels.acp.enabled to true",
+          fix: "Set channels.evol.enabled to true",
         });
       }
 
       if (snap.enabled && snap.running && !snap.connected && snap.lastError) {
         issues.push({
-          channel: "acp",
+          channel: "evol",
           accountId: snap.accountId,
           kind: "runtime",
           message: `Connection error: ${snap.lastError}`,

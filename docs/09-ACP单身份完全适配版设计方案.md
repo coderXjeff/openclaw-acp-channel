@@ -154,7 +154,7 @@ export type AcpRuntimeState = {
   - 否则返回 `["default"]`
 - `resolveAccount(cfg, accountId)`：忽略非 default，统一解析单账号。
 - `defaultAccountId()`：返回 `"default"`
-- `resolveAllowFrom({cfg, accountId})`：返回 `channels.acp.allowFrom ?? []`
+- `resolveAllowFrom({cfg, accountId})`：返回 `channels.evol.allowFrom ?? []`
 - `outbound.sendText/sendMedia`：返回结果结构可映射为 `OutboundDeliveryResult`（至少含 `channel` + `messageId`）
 
 ### 注意

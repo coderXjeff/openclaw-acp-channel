@@ -5,8 +5,8 @@ describe("analyzeAcpBindings", () => {
   it("strict mode flags one-agent-many-accounts", () => {
     const cfg: any = {
       bindings: [
-        { agentId: "work", match: { channel: "acp", accountId: "work" } },
-        { agentId: "work", match: { channel: "acp", accountId: "personal" } },
+        { agentId: "work", match: { channel: "evol", accountId: "work" } },
+        { agentId: "work", match: { channel: "evol", accountId: "personal" } },
       ],
     };
     const acp: any = {
@@ -25,8 +25,8 @@ describe("analyzeAcpBindings", () => {
   it("strict mode passes for 1:1 mapping", () => {
     const cfg: any = {
       bindings: [
-        { agentId: "work", match: { channel: "acp", accountId: "work" } },
-        { agentId: "personal", match: { channel: "acp", accountId: "personal" } },
+        { agentId: "work", match: { channel: "evol", accountId: "work" } },
+        { agentId: "personal", match: { channel: "evol", accountId: "personal" } },
       ],
     };
     const acp: any = {
@@ -43,7 +43,7 @@ describe("analyzeAcpBindings", () => {
 
   it("flex mode downgrades naming mismatch to warn", () => {
     const cfg: any = {
-      bindings: [{ agentId: "agent-work", match: { channel: "acp", accountId: "work" } }],
+      bindings: [{ agentId: "agent-work", match: { channel: "evol", accountId: "work" } }],
     };
     const acp: any = {
       enabled: true,

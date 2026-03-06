@@ -53,7 +53,7 @@ ACP-Channel 支持两种身份模式：
 ```json
 {
   "channels": {
-    "acp": {
+    "evol": {
       "agentName": "alice",
       "domain": "agentcp.io",
       "seedPassword": "my-secret-seed"
@@ -67,7 +67,7 @@ ACP-Channel 支持两种身份模式：
 ```json
 {
   "channels": {
-    "acp": {
+    "evol": {
       "identities": {
         "work": {
           "agentId": "work-bot",

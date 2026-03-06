@@ -1,6 +1,6 @@
 > **你正在执行 ACP 安装任务。必须严格按步骤顺序执行。每一步要么成功后进入下一步，要么停止并向用户说明失败原因。**
 
-# ACP Channel 安装与身份证(agent.md)配置（单身份/多身份 + 绑定策略）
+# Evol_ACP Channel 安装与身份证(agent.md)配置（单身份/多身份 + 绑定策略）
 
 目标：
 1) 安装/更新 ACP 插件  
@@ -16,8 +16,8 @@
 
 为避免混淆，明确以下术语：
 
-- **agentName**: 单身份模式使用，Agent 的名称（如 "my-bot"），配置在 `channels.acp.agentName`
-- **agentId**: 多身份模式使用，引用 `agents.list[]` 中的 Agent ID（如 "work"），配置在 `channels.acp.identities[id].agentId`
+- **agentName**: 单身份模式使用，Agent 的名称（如 "my-bot"），配置在 `channels.evol.agentName`
+- **agentId**: 多身份模式使用，引用 `agents.list[]` 中的 Agent ID（如 "work"），配置在 `channels.evol.identities[id].agentId`
 - **accountId**: ACP 账户 ID，单身份固定为 "default"，多身份为自定义（如 "work"）
 - **TARGET_ACCOUNT_ID**: 本次安装要配置的 accountId（单身份="default"，多身份=用户指定）
 - **AGENT_NAME**: 本次安装要使用的 Agent 名称（单身份=agentName，多身份=agentId）
@@ -89,8 +89,8 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 读取 `~/.openclaw/openclaw.json` 后按规则判定：
 
-- **多身份模式**：`channels.acp.identities` 是非空对象
-- **单身份模式**：`channels.acp.agentName` 存在且 `identities` 为空/不存在
+- **多身份模式**：`channels.evol.identities` 是非空对象
+- **单身份模式**：`channels.evol.agentName` 存在且 `identities` 为空/不存在
 - **未配置**：两者都不存在（默认按单身份新装）
 
 ### 3.1 多身份时的强制询问
@@ -211,10 +211,10 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
 
 ### 5.1 单身份写法（MODE=single）
 
-写入/更新 `channels.acp`：
+写入/更新 `channels.evol`：
 
 ```json
-"acp": {
+"evol": {
   "enabled": true,
   "agentAidBindingMode": "strict",
   "agentName": "{AGENT_NAME}",
@@ -228,10 +228,10 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
 
 ### 5.2 多身份写法（MODE=multi）
 
-写入/更新 `channels.acp.identities.{TARGET_ACCOUNT_ID}`：
+写入/更新 `channels.evol.identities.{TARGET_ACCOUNT_ID}`：
 
 ```json
-"acp": {
+"evol": {
   "enabled": true,
   "agentAidBindingMode": "strict",
   "identities": {
@@ -258,7 +258,7 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
 ```json
 "plugins": {
   "entries": {
-    "acp": {
+    "evol": {
       "enabled": true
     }
   }
@@ -271,12 +271,12 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
 
 **单身份模式**：
 ```json
-{ "agentId": "{AGENT_NAME}", "match": { "channel": "acp", "accountId": "default" } }
+{ "agentId": "{AGENT_NAME}", "match": { "channel": "evol", "accountId": "default" } }
 ```
 
 **多身份模式**（推荐 agentId 与 accountId 同名）：
 ```json
-{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
+{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "evol", "accountId": "{TARGET_ACCOUNT_ID}" } }
 ```
 
 执行写入（根据 MODE 选择对应脚本）：
@@ -345,7 +345,7 @@ const errors=[];
 if(!p?.enabled) errors.push('plugins.entries.acp.enabled is not true');
 
 // 2. ACP 启用
-if(!a?.enabled) errors.push('channels.acp.enabled is not true');
+if(!a?.enabled) errors.push('channels.evol.enabled is not true');
 
 // 3. 绑定模式
 if(a?.agentAidBindingMode!=='strict'&&a?.agentAidBindingMode!=='flex')
@@ -355,18 +355,18 @@ if(a?.agentAidBindingMode!=='strict'&&a?.agentAidBindingMode!=='flex')
 const singleOk=!!(a?.agentName&&/^[a-z0-9-]+$/.test(a.agentName));
 const multiOk=!!(a?.identities&&Object.keys(a.identities).length>0);
 if(!singleOk&&!multiOk)
-  errors.push('Need either channels.acp.agentName (single) or channels.acp.identities (multi)');
+  errors.push('Need either channels.evol.agentName (single) or channels.evol.identities (multi)');
 
 // 5. seedPassword 检查（关键）
 if(singleOk){
   if(!a.seedPassword||a.seedPassword.length<16)
-    errors.push('channels.acp.seedPassword is missing or too short (need 32+ hex chars)');
+    errors.push('channels.evol.seedPassword is missing or too short (need 32+ hex chars)');
 }
 if(multiOk){
   const identities=a.identities||{};
   for(const [id,entry] of Object.entries(identities)){
     if(!entry.seedPassword||entry.seedPassword.length<16)
-      errors.push('channels.acp.identities.'+id+'.seedPassword is missing or too short');
+      errors.push('channels.evol.identities.'+id+'.seedPassword is missing or too short');
   }
 }
 
@@ -635,8 +635,8 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
 ### 错误 3: "PREFLIGHT_FAIL: account config missing"
 **原因**: 配置文件中找不到对应的账户配置
 **检查**:
-- 单身份：确认 `channels.acp.agentName` 存在
-- 多身份：确认 `channels.acp.identities[TARGET_ACCOUNT_ID]` 存在
+- 单身份：确认 `channels.evol.agentName` 存在
+- 多身份：确认 `channels.evol.identities[TARGET_ACCOUNT_ID]` 存在
 
 ### 错误 4: "is used by another user"
 **原因**: AID 已被其他用户注册

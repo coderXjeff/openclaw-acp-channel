@@ -21,7 +21,7 @@ function resolveAcpAccountIdsForAgent(cfg: OpenClawConfig | undefined, agentId?:
   }
 
   // 1. 从 identities 中查找 agentId 匹配的条目
-  const acpConfig = cfg?.channels?.acp as AcpChannelConfig | undefined;
+  const acpConfig = cfg?.channels?.evol as AcpChannelConfig | undefined;
   const identities = acpConfig?.identities ?? {};
   const fromIdentities = new Set<string>();
   for (const [accountId, entry] of Object.entries(identities)) {
@@ -42,7 +42,7 @@ function resolveAcpAccountIdsForAgent(cfg: OpenClawConfig | undefined, agentId?:
   const accountIds = new Set<string>();
   for (const binding of bindings) {
     if (!binding || binding.agentId !== normalizedAgentId) continue;
-    if (binding.match?.channel !== "acp") continue;
+    if (binding.match?.channel !== "evol") continue;
     const accountId = binding.match.accountId?.trim() || "default";
     accountIds.add(accountId);
   }
@@ -51,7 +51,7 @@ function resolveAcpAccountIdsForAgent(cfg: OpenClawConfig | undefined, agentId?:
 }
 
 const plugin = {
-  id: "acp",
+  id: "evol",
   name: "ACP Channel",
   description: "Agent Communication Protocol channel plugin for ACP network communication",
   configSchema: emptyPluginConfigSchema(),
@@ -63,7 +63,7 @@ const plugin = {
     setAcpRuntime(api.runtime);
 
     // 启动时分析 ACP binding 策略与路由约束（strict 模式下 fail-fast）
-    const acpConfig = api.config.channels?.acp as AcpChannelConfig | undefined;
+    const acpConfig = api.config.channels?.evol as AcpChannelConfig | undefined;
     if (acpConfig?.enabled) {
       const bindingAnalysis = analyzeAcpBindings(api.config, acpConfig);
       for (const issue of (bindingAnalysis.issues ?? [])) {

@@ -2,12 +2,12 @@
 
 ## 配置总览
 
-所有配置位于 `~/.openclaw/openclaw.json` 的 `channels.acp`。修改后重启 gateway 生效。
+所有配置位于 `~/.openclaw/openclaw.json` 的 `channels.evol`。修改后重启 gateway 生效。
 
 支持两种模式：
 
-- **单身份**：使用 `channels.acp.agentName` 等顶层字段
-- **多身份**：使用 `channels.acp.identities.{accountId}`
+- **单身份**：使用 `channels.evol.agentName` 等顶层字段
+- **多身份**：使用 `channels.evol.identities.{accountId}`
 
 默认绑定策略：
 
@@ -15,7 +15,7 @@
 
 ---
 
-## 顶层字段（`channels.acp`）
+## 顶层字段（`channels.evol`）
 
 | 字段 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
@@ -35,7 +35,7 @@
 
 ---
 
-## 多身份条目（`channels.acp.identities.{accountId}`）
+## 多身份条目（`channels.evol.identities.{accountId}`）
 
 每个 `accountId` 条目字段与单身份字段一致：
 
@@ -59,7 +59,7 @@
 
 1. `bindings[].match.channel` 为 `acp` 的条目必须有 `accountId`
 2. 1 Agent ↔ 1 Account（双向 1:1）
-3. `accountId` 必须存在于 `channels.acp.identities`
+3. `accountId` 必须存在于 `channels.evol.identities`
 4. 推荐并建议保持 `agentId === accountId`
 
 推荐绑定示例：
@@ -67,8 +67,8 @@
 ```json
 {
   "bindings": [
-    { "agentId": "work", "match": { "channel": "acp", "accountId": "work" } },
-    { "agentId": "personal", "match": { "channel": "acp", "accountId": "personal" } }
+    { "agentId": "work", "match": { "channel": "evol", "accountId": "work" } },
+    { "agentId": "personal", "match": { "channel": "evol", "accountId": "personal" } }
   ]
 }
 ```
@@ -84,7 +84,7 @@
 ```json
 {
   "channels": {
-    "acp": {
+    "evol": {
       "enabled": true,
       "agentAidBindingMode": "strict",
       "agentName": "my-bot",
@@ -96,10 +96,10 @@
     }
   },
   "plugins": {
-    "entries": { "acp": { "enabled": true } }
+    "entries": { "evol": { "enabled": true } }
   },
   "bindings": [
-    { "agentId": "default", "match": { "channel": "acp", "accountId": "default" } }
+    { "agentId": "default", "match": { "channel": "evol", "accountId": "default" } }
   ]
 }
 ```
@@ -109,7 +109,7 @@
 ```json
 {
   "channels": {
-    "acp": {
+    "evol": {
       "enabled": true,
       "agentAidBindingMode": "strict",
       "identities": {
@@ -131,11 +131,11 @@
     }
   },
   "plugins": {
-    "entries": { "acp": { "enabled": true } }
+    "entries": { "evol": { "enabled": true } }
   },
   "bindings": [
-    { "agentId": "work", "match": { "channel": "acp", "accountId": "work" } },
-    { "agentId": "personal", "match": { "channel": "acp", "accountId": "personal" } }
+    { "agentId": "work", "match": { "channel": "evol", "accountId": "work" } },
+    { "agentId": "personal", "match": { "channel": "evol", "accountId": "personal" } }
   ]
 }
 ```

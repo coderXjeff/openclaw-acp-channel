@@ -125,7 +125,7 @@ function extractCapabilities(agents: string): string[] {
  * 生成 YAML frontmatter 中的 tags
  */
 function generateTags(identity: ParsedIdentity, _sources: AgentMdSources): string[] {
-  const tags = ["openclaw", "acp"];
+  const tags = ["openclaw", "evol"];
   if (identity.vibe) {
     // 从 vibe 中提取关键词作为 tag
     const keywords = identity.vibe.toLowerCase();

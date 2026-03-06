@@ -2,10 +2,10 @@ import type { ChannelMessageActionAdapter, ChannelMessageActionName } from "./pl
 import type { AcpChannelConfig } from "./types.js";
 import { sendAcpMessage, parseTarget } from "./outbound.js";
 
-const providerId = "acp";
+const providerId = "evol";
 
 function isAcpEnabled(cfg: any): boolean {
-  const acpConfig = cfg.channels?.acp as AcpChannelConfig | undefined;
+  const acpConfig = cfg.channels?.evol as AcpChannelConfig | undefined;
   if (!acpConfig?.enabled) return false;
   const hasLegacy = !!acpConfig.agentName?.trim();
   const hasIdentities = !!acpConfig.identities && Object.keys(acpConfig.identities).length > 0;

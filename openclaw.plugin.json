@@ -1,6 +1,6 @@
 {
-  "id": "acp",
-  "channels": ["acp"],
+  "id": "evol",
+  "channels": ["evol"],
   "skills": ["./skill"],
   "configSchema": {
     "type": "object",

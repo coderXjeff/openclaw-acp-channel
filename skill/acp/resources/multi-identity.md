@@ -14,10 +14,10 @@ openclaw.json 配置
       │     └── { id: "personal", workspace: "~/.openclaw/workspace-personal" }
       │
       ├── bindings[]                       ←── 核心层：Agent ↔ 渠道绑定（可选）
-      │     ├── { agentId: "work", match: { channel: "acp", accountId: "uuid-1" } }
-      │     └── { agentId: "personal", match: { channel: "acp", accountId: "uuid-2" } }
+      │     ├── { agentId: "work", match: { channel: "evol", accountId: "uuid-1" } }
+      │     └── { agentId: "personal", match: { channel: "evol", accountId: "uuid-2" } }
       │
-      └── channels.acp.identities          ←── 通道层：ACP 网络配置
+      └── channels.evol.identities          ←── 通道层：ACP 网络配置
             ├── uuid-1: { agentId: "work", seedPassword: "xxx" }
             └── uuid-2: { agentId: "personal", seedPassword: "xxx" }
 
@@ -169,7 +169,7 @@ ACP 网络 (acp3.agentcp.io)        ←── 在线通信
 > | 存储 | 位置 | 用途 |
 > |------|------|------|
 > | Agent 定义 | `~/.openclaw/openclaw.json` → `agents.list[]` | 核心层：定义 Agent 的 workspace、identity、model 等 |
-> | ACP 通道配置 | `~/.openclaw/openclaw.json` → `channels.acp.identities` | ACP 插件：通过 `agentId` 引用 Agent，管理网络连接 |
+> | ACP 通道配置 | `~/.openclaw/openclaw.json` → `channels.evol.identities` | ACP 插件：通过 `agentId` 引用 Agent，管理网络连接 |
 > | 设备身份文件 | `~/.openclaw/identities/{deviceId}.json` | UI 身份列表（`identity.list` API）读取 |
 >
 > 如果只改了 ACP 配置而没有在 `agents.list[]` 中定义 Agent，ACP 插件将无法解析 workspace。
@@ -211,7 +211,7 @@ SEED=$(openssl rand -hex 16)
 echo "seedPassword: $SEED"
 ```
 
-编辑 `~/.openclaw/openclaw.json`，在 `channels.acp.identities` 中添加，通过 `agentId` 引用步骤 1 定义的 Agent：
+编辑 `~/.openclaw/openclaw.json`，在 `channels.evol.identities` 中添加，通过 `agentId` 引用步骤 1 定义的 Agent：
 
 ```json
 {
@@ -248,14 +248,14 @@ ls ~/.openclaw/identities/
   "isDefault": false,
   "createdAtMs": <当前时间戳毫秒>,
   "lastActiveAtMs": <当前时间戳毫秒>,
-  "channels": ["acp"]
+  "channels": ["evol"]
 }
 ```
 
 关键字段说明：
 - `id`：必须与 `openclaw.json` 中 `identities` 的 key（UUID）完全一致
 - `label`：显示名称，建议与 agentId 一致便于辨认
-- `channels`：设为 `["acp"]` 表示该身份绑定 ACP 渠道
+- `channels`：设为 `["evol"]` 表示该身份绑定 ACP 渠道
 - `isDefault`：是否为默认身份，同一时间只能有一个为 `true`
 
 > 获取当前时间戳：`node -e "console.log(Date.now())"`
@@ -366,7 +366,7 @@ vim ~/.openclaw/workspace-funny-bot/IDENTITY.md
 ### 3.3 删除身份
 
 1. 从 `~/.openclaw/openclaw.json` 的 `agents.list[]` 中删除对应 Agent 条目
-2. 从 `~/.openclaw/openclaw.json` 的 `channels.acp.identities` 中删除对应 UUID 条目
+2. 从 `~/.openclaw/openclaw.json` 的 `channels.evol.identities` 中删除对应 UUID 条目
 3. 从 `~/.openclaw/identities/{deviceId}.json` 的 `identities` 数组中删除对应条目
 4. 删除该 Agent 的 workspace 目录（如果是独立目录）
 5. 请询问主人是否现在重启 Gateway 以使删除生效
@@ -434,7 +434,7 @@ fullAid = agentId + "." + domain
 | 层面 | 绑定方式 | 作用 |
 |------|---------|------|
 | **Agent 定义层** | `agents.list[]` 中的 Agent 条目 | 定义 workspace、identity、model 等 Agent 属性 |
-| **配置层** | `channels.acp.identities[uuid].agentId` | ACP 身份引用 Agent，建立 UUID → agentId 映射 |
+| **配置层** | `channels.evol.identities[uuid].agentId` | ACP 身份引用 Agent，建立 UUID → agentId 映射 |
 | **路由层** | `AcpIdentityRouter.aidToIdentityId` Map | 运行时 AID → UUID → agentId 双向查找 |
 | **人格层** | 核心 `resolveAgentWorkspaceDir(cfg, agentId)` | agentId → workspace 目录 → 独立人格文件 |
 
@@ -472,7 +472,7 @@ fullAid = agentId + "." + domain
     ]
   },
   "channels": {
-    "acp": {
+    "evol": {
       "enabled": true,
       "domain": "agentcp.io",
       "ownerAid": "my-owner.agentcp.io",
@@ -500,7 +500,7 @@ fullAid = agentId + "." + domain
   },
   "plugins": {
     "entries": {
-      "acp": { "enabled": true }
+      "evol": { "enabled": true }
     }
   }
 }
@@ -524,7 +524,7 @@ fullAid = agentId + "." + domain
 
 > 完整字段参见核心代码 `AgentEntrySchema`（`src/config/zod-schema.agent-runtime.ts`）。
 
-#### channels.acp 顶层字段（ACP 全局默认值）
+#### channels.evol 顶层字段（ACP 全局默认值）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -535,7 +535,7 @@ fullAid = agentId + "." + domain
 | `seedPassword` | string | 默认密码，各身份可覆盖 |
 | `session` | object | 会话终止控制（所有身份共享） |
 
-#### channels.acp.identities 中每个身份的字段（ACP 通道层）
+#### channels.evol.identities 中每个身份的字段（ACP 通道层）
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|

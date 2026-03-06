@@ -4,7 +4,7 @@
 
 当前 ACP 多身份方案已经支持：
 
-- `channels.acp.identities.{accountId}` 多身份配置
+- `channels.evol.identities.{accountId}` 多身份配置
 - 通过 `bindings(channel=acp, accountId=...)` 路由到目标 Agent
 - 联系人/会话/连接状态按 identity（accountId）隔离
 
@@ -62,7 +62,7 @@
 ## 4.1 统一命名约定（强建议）
 
 - `agents.list[].id = work`
-- `channels.acp.identities.work = {...}`
+- `channels.evol.identities.work = {...}`
 - `bindings[].match.accountId = work`
 - `bindings[].agentId = work`
 
@@ -75,7 +75,7 @@
 1. `channel=acp` 的每个 binding 必须有 `accountId`
 2. 同一 `agentId` 只能出现一个 `accountId`
 3. 同一 `accountId` 只能绑定一个 `agentId`
-4. `accountId` 必须存在于 `channels.acp.identities`
+4. `accountId` 必须存在于 `channels.evol.identities`
 5. 建议 `agentId === accountId`，不等时给出警告（严格模式下直接报错）
 
 ## 4.3 身份生命周期
@@ -152,8 +152,8 @@
     }
   },
   bindings: [
-    { agentId: "work", match: { channel: "acp", accountId: "work" } },
-    { agentId: "personal", match: { channel: "acp", accountId: "personal" } }
+    { agentId: "work", match: { channel: "evol", accountId: "work" } },
+    { agentId: "personal", match: { channel: "evol", accountId: "personal" } }
   ]
 }
 ```
@@ -179,7 +179,7 @@
 
 1. 备份 `openclaw.json`
 2. 调整 `agents.list`（补齐独立 workspace）
-3. 调整 `channels.acp.identities`
+3. 调整 `channels.evol.identities`
 4. 调整 `bindings` 为 1:1
 5. 重启 gateway
 6. 用 `/acp-status` 验证每个 agent 只对应一个 account/AID

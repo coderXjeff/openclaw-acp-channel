@@ -72,8 +72,8 @@ ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && ec
 
 读取 `~/.openclaw/openclaw.json` 后按规则判定：
 
-- **多身份模式**：`channels.acp.identities` 是非空对象
-- **单身份模式**：`channels.acp.agentName` 存在且 `identities` 为空/不存在
+- **多身份模式**：`channels.evol.identities` 是非空对象
+- **单身份模式**：`channels.evol.agentName` 存在且 `identities` 为空/不存在
 - **未配置**：两者都不存在（默认按单身份新装）
 
 ### 3.1 多身份时的强制询问
@@ -161,10 +161,10 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 
 ### 5.1 单身份写法（MODE=single）
 
-写入/更新 `channels.acp`：
+写入/更新 `channels.evol`：
 
 ```json
-"acp": {
+"evol": {
   "enabled": true,
   "agentAidBindingMode": "strict",
   "agentName": "{AGENT_NAME}",
@@ -178,10 +178,10 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 
 ### 5.2 多身份写法（MODE=multi）
 
-写入/更新 `channels.acp.identities.{TARGET_ACCOUNT_ID}`：
+写入/更新 `channels.evol.identities.{TARGET_ACCOUNT_ID}`：
 
 ```json
-"acp": {
+"evol": {
   "enabled": true,
   "agentAidBindingMode": "strict",
   "identities": {
@@ -208,7 +208,7 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 ```json
 "plugins": {
   "entries": {
-    "acp": {
+    "evol": {
       "enabled": true
     }
   }
@@ -220,18 +220,18 @@ cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
 `strict` 模式默认要求 1:1 绑定，必须确保存在：
 
 ```json
-{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "acp", "accountId": "{TARGET_ACCOUNT_ID}" } }
+{ "agentId": "{TARGET_ACCOUNT_ID}", "match": { "channel": "evol", "accountId": "{TARGET_ACCOUNT_ID}" } }
 ```
 
 规则：
 - 如果 `bindings` 没有这条，追加。
 - 如果存在同 `accountId` 的错误绑定，先提示并修正为 1:1。
-- 多身份模式下，不能只改 `channels.acp.identities` 而不改 `bindings`。
+- 多身份模式下，不能只改 `channels.evol.identities` 而不改 `bindings`。
 
 ### 5.5 配置合法性校验
 
 ```bash
-node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.acp;const p=c.plugins?.entries?.acp;const b=Array.isArray(c.bindings)?c.bindings:[];const hasMode=!!(a?.agentAidBindingMode==='strict'||a?.agentAidBindingMode==='flex');const singleOk=!!(a?.enabled&&a?.agentName&&/^[a-z0-9-]+$/.test(a.agentName));const multiOk=!!(a?.enabled&&a?.identities&&Object.keys(a.identities).length>0);const bindOk=b.some(x=>x?.match?.channel==='acp');if((singleOk||multiOk)&&p?.enabled&&hasMode&&bindOk)console.log('Config OK');else{console.log('ERROR');process.exit(1)}"
+node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=c.channels?.evol;const p=c.plugins?.entries?.evol;const b=Array.isArray(c.bindings)?c.bindings:[];const hasMode=!!(a?.agentAidBindingMode==='strict'||a?.agentAidBindingMode==='flex');const singleOk=!!(a?.enabled&&a?.agentName&&/^[a-z0-9-]+$/.test(a.agentName));const multiOk=!!(a?.enabled&&a?.identities&&Object.keys(a.identities).length>0);const bindOk=b.some(x=>x?.match?.channel==='evol');if((singleOk||multiOk)&&p?.enabled&&hasMode&&bindOk)console.log('Config OK');else{console.log('ERROR');process.exit(1)}"
 ```
 
 若失败：恢复备份并停止。

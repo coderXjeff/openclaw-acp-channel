@@ -22,7 +22,7 @@
 
 职责：
 
-1. 分析 `bindings(channel=acp)` 与 `channels.acp.identities` 的一致性
+1. 分析 `bindings(channel=acp)` 与 `channels.evol.identities` 的一致性
 2. 在 strict 模式下识别并阻断：
    - 一 agent 对多 account
    - 一 account 对多 agent
@@ -147,8 +147,8 @@ channels: {
   }
 },
 bindings: [
-  { agentId: "work", match: { channel: "acp", accountId: "work" } },
-  { agentId: "personal", match: { channel: "acp", accountId: "personal" } }
+  { agentId: "work", match: { channel: "evol", accountId: "work" } },
+  { agentId: "personal", match: { channel: "evol", accountId: "personal" } }
 ]
 ```
 

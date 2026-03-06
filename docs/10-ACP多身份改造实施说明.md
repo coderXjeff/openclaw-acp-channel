@@ -6,7 +6,7 @@
 
 目标拆解：
 
-1. 配置层支持 `channels.acp.identities`（key 为 accountId）。
+1. 配置层支持 `channels.evol.identities`（key 为 accountId）。
 2. Gateway 生命周期按 accountId 启停、重连、状态上报。
 3. 入站/出站路由、会话、联系人、工作区按身份隔离。
 4. 保持旧配置 `agentName + domain` 可无缝运行。

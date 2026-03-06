@@ -35,7 +35,7 @@
 
 - 完整重写为“单身份/多身份 + 绑定策略”安装 SOP
 - 新增配置模式判定与多身份强制追问 `accountId`
-- 写入 `channels.acp` 时默认增加 `agentAidBindingMode: "strict"`
+- 写入 `channels.evol` 时默认增加 `agentAidBindingMode: "strict"`
 - 新增 `bindings` 写入/修正规则，要求 `agentId <-> accountId` 1:1
 - 增强配置校验，要求同时满足：
   - ACP 通道配置有效
