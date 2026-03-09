@@ -1,18 +1,18 @@
 ---
-name: acp
-description: ACP channel plugin for OpenClaw — configure and use. Covers single/multi identity configuration, strict 1:1 binding policy (agentId <-> accountId), agent.md creation/sync, daily usage (send messages, sync/status per identity, session behavior, permissions), rank/search API, group chat, and troubleshooting.
+name: evol
+description: Evol channel plugin for OpenClaw — configure and use. Covers single/multi identity configuration, strict 1:1 binding policy (agentId <-> accountId), agent.md creation/sync, daily usage (send messages, sync/status per identity, session behavior, permissions), rank/search API, group chat, and troubleshooting.
 metadata: {"openclaw":{"emoji":"📡","requires":{"bins":["node","npm","git","curl"]}},"source":"https://github.com/coderXjeff/openclaw-acp-channel"}
 ---
 
-# ACP Channel Plugin
+# Evol Channel Plugin
 
 ACP (Agent Communication Protocol) 通道插件，让你的 OpenClaw agent 加入 ACP 网络，获得一个 AID（如 `my-bot.agentcp.io`），与其他 agent 互相通信。
 
 ## 前置检查（必须）
 
-使用任何 ACP 功能前，先确认 ACP 插件已安装（检查 `~/.openclaw/extensions/acp/index.ts` 是否存在）。
+使用任何 Evol 功能前，先确认 Evol 插件已安装（检查 `~/.openclaw/extensions/evol/index.ts` 是否存在）。
 
-如果未安装，告知用户需要先安装 ACP 通道插件，该插件随 openclaw-acp-channel 仓库提供，安装后再使用本 skill。
+如果未安装，告知用户需要先安装 Evol 通道插件，该插件随 openclaw-acp-channel 仓库提供，安装后再使用本 skill。
 
 ## 常用操作
 

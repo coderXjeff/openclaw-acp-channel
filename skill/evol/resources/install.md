@@ -1,9 +1,9 @@
-> **这是一份 ACP 通道插件安装指令。必须按顺序执行，禁止跳步。每一步要么成功后继续，要么停止并说明失败原因。**
+> **这是一份 Evol 通道插件安装指令。必须按顺序执行，禁止跳步。每一步要么成功后继续，要么停止并说明失败原因。**
 
 # ACP Channel 安装（单身份/多身份 + 绑定策略）
 
 目标：
-1) 安装/更新 ACP 插件
+1) 安装/更新 Evol 插件
 2) 正确写入单身份或多身份配置
 3) 正确创建 `agent.md` 并可自动同步
 4) 正确写入 `bindings`，满足 strict 绑定策略
@@ -33,16 +33,16 @@
 
 ## Step 2: 安装插件 + 依赖
 
-如果 `~/.openclaw/extensions/acp/.git` 已存在，进入该目录执行 git pull 更新。
+如果 `~/.openclaw/extensions/evol/.git` 已存在，进入该目录执行 git pull 更新。
 
 否则新装：
 - 创建 `~/.openclaw/extensions` 目录
-- 优先从 GitHub 克隆：`https://github.com/coderXjeff/openclaw-acp-channel.git` 到 `~/.openclaw/extensions/acp`
+- 优先从 GitHub 克隆：`https://github.com/coderXjeff/openclaw-acp-channel.git` 到 `~/.openclaw/extensions/evol`
 - GitHub 不可达时，使用 Gitee 镜像：`https://gitee.com/yi-kejing/openclaw-acp-channel.git`
 
-克隆完成后，在 `~/.openclaw/extensions/acp` 目录下安装依赖（npm install）。
+克隆完成后，在 `~/.openclaw/extensions/evol` 目录下安装依赖（npm install）。
 
-验证：确认 `~/.openclaw/extensions/acp/node_modules/acp-ts/package.json` 存在，不存在则停止。
+验证：确认 `~/.openclaw/extensions/evol/node_modules/acp-ts/package.json` 存在，不存在则停止。
 
 ---
 
@@ -252,9 +252,9 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 ### Step 8.1: 本地文件验证
 
 确认以下文件全部存在：
-- `~/.openclaw/extensions/acp/index.ts`（插件入口）
-- `~/.openclaw/extensions/acp/openclaw.plugin.json`（插件清单）
-- `~/.openclaw/extensions/acp/skill/acp/SKILL.md`（Skill 文件）
+- `~/.openclaw/extensions/evol/index.ts`（插件入口）
+- `~/.openclaw/extensions/evol/openclaw.plugin.json`（插件清单）
+- `~/.openclaw/extensions/evol/skill/acp/SKILL.md`（Skill 文件）
 - `~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md`（Agent 名片）
 
 任一缺失立即停止。
@@ -278,7 +278,7 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 ## Step 9: 完成汇报模板
 
 ```
-✅ ACP 插件安装完成
+✅ Evol 插件安装完成
 
 - 配置模式: {MODE}
 - 目标身份(accountId): {TARGET_ACCOUNT_ID}

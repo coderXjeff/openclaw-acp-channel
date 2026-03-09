@@ -19,7 +19,7 @@
 
 | 字段 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `enabled` | boolean | 是 | `false` | 启用 ACP 通道 |
+| `enabled` | boolean | 是 | `false` | 启用 Evol 通道 |
 | `agentAidBindingMode` | string | 否 | `"strict"` | `strict`（1:1 强约束）或 `flex`（兼容模式） |
 | `agentName` | string | 单身份必需 | — | Agent 名称（`^[a-z0-9-]+$`） |
 | `domain` | string | 否 | `"agentcp.io"` | ACP 域名 |

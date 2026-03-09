@@ -32,8 +32,8 @@ OpenClaw Gateway
       │       → 从 workspaceDir 加载 SOUL.md、IDENTITY.md 等文件
       │   ⚠️ 核心代码对 ACP identityId 无感知，只认 agentId + workspaceDir
       │
-      │ 插件机制 (~/.openclaw/extensions/acp)
-      │   ACP 插件通过 before_agent_start 钩子接收核心解析好的 workspaceDir
+      │ 插件机制 (~/.openclaw/extensions/evol)
+      │   Evol 插件通过 before_agent_start 钩子接收核心解析好的 workspaceDir
       │   存入本地 Map（workspace.ts），后续通过 getWorkspaceDir(identityId) 获取
       ▼
 ACP 渠道插件 (index.ts → channel.ts → monitor.ts)
@@ -62,7 +62,7 @@ ACP 网络 (acp3.agentcp.io)        ←── 在线通信
 | 层级 | 隔离内容 | 实现机制 |
 |------|---------|---------|
 | **人格层** | SOUL.md、IDENTITY.md（人格、名字、emoji） | 核心层 `agents.list[]` 定义每个 Agent 的 workspace，各自包含完整的人格文件 |
-| **通信层** | AID、会话、联系人、agent.md | ACP 插件 identity-router + multi-client，每个 ACP identity 绑定一个 agentId。联系人存储在 `~/.acp-storage/contacts-{identityId}.json` |
+| **通信层** | AID、会话、联系人、agent.md | Evol 插件 identity-router + multi-client，每个 ACP identity 绑定一个 agentId。联系人存储在 `~/.acp-storage/contacts-{identityId}.json` |
 | **行为层** | AGENTS.md、TOOLS.md | 核心层每个 Agent 的 workspace 中可放置独立的行为规则文件 |
 
 ### 与单身份模式的核心区别
@@ -169,10 +169,10 @@ ACP 网络 (acp3.agentcp.io)        ←── 在线通信
 > | 存储 | 位置 | 用途 |
 > |------|------|------|
 > | Agent 定义 | `~/.openclaw/openclaw.json` → `agents.list[]` | 核心层：定义 Agent 的 workspace、identity、model 等 |
-> | ACP 通道配置 | `~/.openclaw/openclaw.json` → `channels.evol.identities` | ACP 插件：通过 `agentId` 引用 Agent，管理网络连接 |
+> | Evol 通道配置 | `~/.openclaw/openclaw.json` → `channels.evol.identities` | Evol 插件：通过 `agentId` 引用 Agent，管理网络连接 |
 > | 设备身份文件 | `~/.openclaw/identities/{deviceId}.json` | UI 身份列表（`identity.list` API）读取 |
 >
-> 如果只改了 ACP 配置而没有在 `agents.list[]` 中定义 Agent，ACP 插件将无法解析 workspace。
+> 如果只改了 ACP 配置而没有在 `agents.list[]` 中定义 Agent，Evol 插件将无法解析 workspace。
 
 #### 步骤 1：在 agents.list[] 中定义新 Agent
 
@@ -223,7 +223,7 @@ echo "seedPassword: $SEED"
 }
 ```
 
-> ACP 插件拿到 `agentId: "funny-bot"` 后，调用核心的 `resolveAgentWorkspaceDir(cfg, "funny-bot")` 获取 workspace 目录，无需在 ACP 配置中重复定义 `workspaceDir`。
+> Evol 插件拿到 `agentId: "funny-bot"` 后，调用核心的 `resolveAgentWorkspaceDir(cfg, "funny-bot")` 获取 workspace 目录，无需在 ACP 配置中重复定义 `workspaceDir`。
 > 该身份的 AID 为 `funny-bot.agentcp.io`（agentId + domain）。
 
 #### 步骤 3：同步到设备身份文件
@@ -405,7 +405,7 @@ Agent "personal" → resolveAgentWorkspaceDir(cfg, "personal") → /path/to/work
 
 > 注意：核心代码没有 per-identity 覆盖机制。身份隔离完全通过不同 Agent 的 workspace 实现。
 >
-> 但 ACP 插件的 `agent-md-sources.ts` 支持 per-identity 文件覆盖：如果 `workspace/identities/{identityId}/IDENTITY.md` 存在，会优先使用该文件生成 agent.md，否则 fallback 到 workspace 根目录。这允许同一个 workspace 下为不同 ACP 身份生成不同的 agent.md。
+> 但 Evol 插件的 `agent-md-sources.ts` 支持 per-identity 文件覆盖：如果 `workspace/identities/{identityId}/IDENTITY.md` 存在，会优先使用该文件生成 agent.md，否则 fallback 到 workspace 根目录。这允许同一个 workspace 下为不同 ACP 身份生成不同的 agent.md。
 
 ---
 
@@ -535,7 +535,7 @@ fullAid = agentId + "." + domain
 | `seedPassword` | string | 默认密码，各身份可覆盖 |
 | `session` | object | 会话终止控制（所有身份共享） |
 
-#### channels.evol.identities 中每个身份的字段（ACP 通道层）
+#### channels.evol.identities 中每个身份的字段（Evol 通道层）
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -547,13 +547,13 @@ fullAid = agentId + "." + domain
 | `allowFrom` | string[] | 否 | 覆盖顶层 allowFrom |
 | `agentMdPath` | string | 否 | 该身份的 agent.md 路径 |
 
-> 注意：`workspaceDir` 不再出现在 ACP 配置中。workspace 由核心层 `agents.list[].workspace` 定义，ACP 插件通过 `before_agent_start` 钩子接收。
+> 注意：`workspaceDir` 不再出现在 ACP 配置中。workspace 由核心层 `agents.list[].workspace` 定义，Evol 插件通过 `before_agent_start` 钩子接收。
 >
 > `agentName` 是单身份模式的遗留字段。多身份模式下 AID 由 `agentId + domain` 构建，`agentName` 不参与。如果配置中同时存在 `agentId` 和 `agentName`，以 `agentId` 为准。
 
 #### 继承规则
 
-ACP 通道层字段优先使用自身配置，未配置时回退到顶层默认值：
+Evol 通道层字段优先使用自身配置，未配置时回退到顶层默认值：
 
 ```
 ACP 身份字段值 = identities[id].field ?? 顶层 field ?? 默认值
@@ -570,7 +570,7 @@ workspace = resolveAgentWorkspaceDir(cfg, identities[id].agentId)
 
 ## 六、workspaceDir 在核心代码中的传递链路
 
-> ⚠️ 核心代码对 ACP identityId 无感知。核心代码通过 `agentId` 查找 `agents.list[]` 配置来解析 workspace，ACP 插件只需提供 `agentId` 即可复用核心的解析逻辑。
+> ⚠️ 核心代码对 ACP identityId 无感知。核心代码通过 `agentId` 查找 `agents.list[]` 配置来解析 workspace，Evol 插件只需提供 `agentId` 即可复用核心的解析逻辑。
 
 ### 6.1 核心代码的 workspaceDir 解析（agents/agent-scope.ts）
 
@@ -600,9 +600,9 @@ export function resolveAgentWorkspaceDir(cfg: OpenClawConfig, agentId: string) {
 }
 ```
 
-> ACP 插件通过 `before_agent_start` 钩子接收核心解析好的 workspaceDir，存入本地 Map，后续通过 `getWorkspaceDir(identityId)` 获取。
+> Evol 插件通过 `before_agent_start` 钩子接收核心解析好的 workspaceDir，存入本地 Map，后续通过 `getWorkspaceDir(identityId)` 获取。
 
-### 6.2 ACP 插件获取 workspaceDir 的方式
+### 6.2 Evol 插件获取 workspaceDir 的方式
 
 ```typescript
 // index.ts — 通过 before_agent_start 钩子接收 workspaceDir
@@ -681,7 +681,7 @@ AID 连接成功
 | `auto-reply/reply/get-reply.ts` | 解析 workspaceDir 并传递给 runner |
 | `gateway/server-methods/agent.ts` | 解析 workspaceDir 并传递给 agentCommand |
 
-#### ACP 插件中的关键文件
+#### Evol 插件中的关键文件
 
 | 文件 | 作用 |
 |------|------|
@@ -868,7 +868,7 @@ function getStoragePathForIdentity(identityId?: string): string {
 ┌─────────────────────────────────────────────────────────────┐
 │  1. OpenClaw Gateway 启动                                    │
 │     读取 openclaw.json → 发现 ACP 渠道已启用                   │
-│     加载插件 ~/.openclaw/extensions/acp/index.ts              │
+│     加载插件 ~/.openclaw/extensions/evol/index.ts              │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        ▼
