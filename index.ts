@@ -50,6 +50,8 @@ function resolveAcpAccountIdsForAgent(cfg: OpenClawConfig | undefined, agentId?:
   return accountIds.size > 0 ? Array.from(accountIds) : ["default"];
 }
 
+let _registered = false;
+
 const plugin = {
   id: "evol",
   name: "ACP Channel",
@@ -57,6 +59,8 @@ const plugin = {
   configSchema: emptyPluginConfigSchema(),
 
   register(api: OpenClawPluginApi) {
+    if (_registered) return;
+    _registered = true;
     console.log("[ACP] Registering ACP channel plugin");
 
     // 自动迁移：检测旧配置并自动迁移
