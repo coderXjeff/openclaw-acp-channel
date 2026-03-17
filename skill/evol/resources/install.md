@@ -62,23 +62,56 @@ ls ~/.openclaw/openclaw.json 2>/dev/null && echo "OK" || echo "ERROR: OpenClaw n
 GITHUB_URL="https://github.com/coderXjeff/openclaw-acp-channel.git"
 GITEE_URL="https://gitee.com/yi-kejing/openclaw-acp-channel.git"
 
-if [ -d ~/.openclaw/extensions/acp/.git ]; then
-  cd ~/.openclaw/extensions/acp && git pull
+if [ -d ~/.openclaw/extensions/evol/.git ]; then
+  cd ~/.openclaw/extensions/evol && git pull
 else
   mkdir -p ~/.openclaw/extensions
   echo "尝试从 GitHub 克隆..."
-  if ! git clone "$GITHUB_URL" ~/.openclaw/extensions/acp 2>/dev/null; then
+  if ! git clone "$GITHUB_URL" ~/.openclaw/extensions/evol 2>/dev/null; then
     echo "GitHub 不可达，切换 Gitee 镜像..."
-    git clone "$GITEE_URL" ~/.openclaw/extensions/acp
+    git clone "$GITEE_URL" ~/.openclaw/extensions/evol
   fi
 fi
-cd ~/.openclaw/extensions/acp && npm install
 ```
 
-验证：
+验证仓库正确性（必须执行）：
 
 ```bash
-ls ~/.openclaw/extensions/acp/node_modules/acp-ts/package.json 2>/dev/null && echo "acp-ts OK" || echo "ERROR: acp-ts not installed"
+# 检查 package.json 是否包含正确的依赖
+node -e "
+const fs=require('fs');
+const pkg=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/extensions/evol/package.json','utf8'));
+if(pkg.dependencies?.['node-llama-cpp']){
+  console.error('ERROR: Wrong repository - contains node-llama-cpp dependency');
+  process.exit(1);
+}
+if(!pkg.dependencies?.['acp-ts']){
+  console.error('ERROR: Missing acp-ts dependency');
+  process.exit(1);
+}
+console.log('Repository OK');
+"
+```
+
+若出现 `ERROR: Wrong repository`，说明克隆了错误的仓库，必须清理后重新克隆：
+
+```bash
+rm -rf ~/.openclaw/extensions/evol
+# 然后重新执行克隆步骤
+```
+
+安装依赖：
+
+```bash
+cd ~/.openclaw/extensions/evol && npm install
+```
+
+> 如果 `npm install` 在 `node-llama-cpp` postinstall 阶段卡住或失败，说明仓库有问题。请删除 `~/.openclaw/extensions/evol` 后重新克隆。**正确的 evol 插件不包含 `node-llama-cpp` 依赖**。
+
+验证安装成功：
+
+```bash
+ls ~/.openclaw/extensions/evol/node_modules/acp-ts/package.json 2>/dev/null && echo "acp-ts OK" || echo "ERROR: acp-ts not installed"
 ```
 
 出现 `ERROR` 则停止。
@@ -216,6 +249,7 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
 ```json
 "evol": {
   "enabled": true,
+  "backend": "plugin",
   "agentAidBindingMode": "strict",
   "agentName": "{AGENT_NAME}",
   "domain": "{DOMAIN}",
@@ -233,6 +267,7 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
 ```json
 "evol": {
   "enabled": true,
+  "backend": "plugin",
   "agentAidBindingMode": "strict",
   "identities": {
     "{TARGET_ACCOUNT_ID}": {
@@ -261,9 +296,18 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
     "evol": {
       "enabled": true
     }
+  },
+  "installs": {
+    "evol": {
+      "source": "path",
+      "installPath": "~/.openclaw/extensions/evol",
+      "sourcePath": "~/.openclaw/extensions/evol/index.ts"
+    }
   }
 }
 ```
+
+> `plugins.installs` 告知框架该插件是已知的本地安装，防止每次 AI 请求时重复加载插件（避免刷屏问题）。
 
 ### 5.4 写入/校验 bindings（关键）
 
@@ -291,9 +335,9 @@ const cfg=JSON.parse(fs.readFileSync(cfgPath,'utf8'));
 if(!Array.isArray(cfg.bindings))cfg.bindings=[];
 const agentId='{AGENT_NAME}';
 const accountId='default';
-const exists=cfg.bindings.some(b=>b.agentId===agentId&&b.match?.channel==='acp'&&b.match?.accountId===accountId);
+const exists=cfg.bindings.some(b=>b.agentId===agentId&&b.match?.channel==='evol'&&b.match?.accountId===accountId);
 if(!exists){
-  cfg.bindings.push({agentId,match:{channel:'acp',accountId}});
+  cfg.bindings.push({agentId,match:{channel:'evol',accountId}});
   fs.writeFileSync(cfgPath,JSON.stringify(cfg,null,2));
   console.log('Added binding: agentId='+agentId+', accountId='+accountId);
 }else{
@@ -312,9 +356,9 @@ const cfg=JSON.parse(fs.readFileSync(cfgPath,'utf8'));
 if(!Array.isArray(cfg.bindings))cfg.bindings=[];
 const agentId='{TARGET_ACCOUNT_ID}';
 const accountId='{TARGET_ACCOUNT_ID}';
-const exists=cfg.bindings.some(b=>b.agentId===agentId&&b.match?.channel==='acp'&&b.match?.accountId===accountId);
+const exists=cfg.bindings.some(b=>b.agentId===agentId&&b.match?.channel==='evol'&&b.match?.accountId===accountId);
 if(!exists){
-  cfg.bindings.push({agentId,match:{channel:'acp',accountId}});
+  cfg.bindings.push({agentId,match:{channel:'evol',accountId}});
   fs.writeFileSync(cfgPath,JSON.stringify(cfg,null,2));
   console.log('Added binding: agentId='+agentId+', accountId='+accountId);
 }else{
@@ -336,13 +380,13 @@ if(!exists){
 node -e "
 const fs=require('fs');
 const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));
-const a=c.channels?.acp;
-const p=c.plugins?.entries?.acp;
+const a=c.channels?.evol;
+const p=c.plugins?.entries?.evol;
 const b=Array.isArray(c.bindings)?c.bindings:[];
 const errors=[];
 
 // 1. 插件开关
-if(!p?.enabled) errors.push('plugins.entries.acp.enabled is not true');
+if(!p?.enabled) errors.push('plugins.entries.evol.enabled is not true');
 
 // 2. ACP 启用
 if(!a?.enabled) errors.push('channels.evol.enabled is not true');
@@ -371,7 +415,7 @@ if(multiOk){
 }
 
 // 6. bindings 包含 ACP 条目
-const bindOk=b.some(x=>x?.match?.channel==='acp');
+const bindOk=b.some(x=>x?.match?.channel==='evol');
 if(!bindOk) errors.push('No ACP binding found in bindings[]');
 
 if(errors.length>0){
@@ -467,9 +511,9 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 ### 8.1 本地文件验证
 
 ```bash
-ls ~/.openclaw/extensions/acp/index.ts && echo "Plugin OK" || echo "ERROR: Plugin missing"
-ls ~/.openclaw/extensions/acp/openclaw.plugin.json && echo "Manifest OK" || echo "ERROR: Manifest missing"
-ls ~/.openclaw/extensions/acp/skill/acp/SKILL.md && echo "Skill OK" || echo "ERROR: Skill missing"
+ls ~/.openclaw/extensions/evol/index.ts && echo "Plugin OK" || echo "ERROR: Plugin missing"
+ls ~/.openclaw/extensions/evol/openclaw.plugin.json && echo "Manifest OK" || echo "ERROR: Manifest missing"
+ls ~/.openclaw/extensions/evol/skill/evol/SKILL.md && echo "Skill OK" || echo "ERROR: Skill missing"
 ls ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md && echo "agent.md OK" || echo "ERROR: agent.md missing"
 ```
 
@@ -490,9 +534,9 @@ const SF=path.join(os.homedir(),'.acp-storage','localStorage.json');
 let sd={};try{if(fs.existsSync(SF))sd=JSON.parse(fs.readFileSync(SF,'utf8'))}catch{}
 const lsp={getItem(k){return sd[k]??null},setItem(k,v){sd[k]=v;fs.writeFileSync(SF,JSON.stringify(sd,null,2))},removeItem(k){delete sd[k];fs.writeFileSync(SF,JSON.stringify(sd,null,2))},clear(){sd={};fs.writeFileSync(SF,JSON.stringify(sd))},key(i){return Object.keys(sd)[i]??null},get length(){return Object.keys(sd).length}};
 globalThis.window=globalThis.window||{};globalThis.window.localStorage=lsp;globalThis.localStorage=lsp;
-const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/acp/node_modules/acp-ts');
+const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/evol/node_modules/acp-ts/dist/agentcp.js');
 const cfg=JSON.parse(fs.readFileSync(path.join(os.homedir(),'.openclaw','openclaw.json'),'utf8'));
-const ac=cfg.channels?.acp||{};
+const ac=cfg.channels?.evol||{};
 const accountId='${TARGET_ACCOUNT_ID}';
 const target=ac;
 const agentId=target?.agentName;
@@ -527,9 +571,9 @@ const SF=path.join(os.homedir(),'.acp-storage','localStorage.json');
 let sd={};try{if(fs.existsSync(SF))sd=JSON.parse(fs.readFileSync(SF,'utf8'))}catch{}
 const lsp={getItem(k){return sd[k]??null},setItem(k,v){sd[k]=v;fs.writeFileSync(SF,JSON.stringify(sd,null,2))},removeItem(k){delete sd[k];fs.writeFileSync(SF,JSON.stringify(sd,null,2))},clear(){sd={};fs.writeFileSync(SF,JSON.stringify(sd))},key(i){return Object.keys(sd)[i]??null},get length(){return Object.keys(sd).length}};
 globalThis.window=globalThis.window||{};globalThis.window.localStorage=lsp;globalThis.localStorage=lsp;
-const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/acp/node_modules/acp-ts');
+const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/evol/node_modules/acp-ts/dist/agentcp.js');
 const cfg=JSON.parse(fs.readFileSync(path.join(os.homedir(),'.openclaw','openclaw.json'),'utf8'));
-const ac=cfg.channels?.acp||{};
+const ac=cfg.channels?.evol||{};
 const accountId='${TARGET_ACCOUNT_ID}';
 const target=ac.identities?.[accountId]||null;
 const agentId=target?.agentId;
@@ -587,8 +631,8 @@ const aid=agentId+'.'+(target.domain||'agentcp.io');
 - ownerAid: {OWNER_AID 或 "未设置"}
 
 bindings:
-- 单身份: agentId={AGENT_NAME} -> accountId=default (channel=acp)
-- 多身份: agentId={TARGET_ACCOUNT_ID} -> accountId={TARGET_ACCOUNT_ID} (channel=acp)
+- 单身份: agentId={AGENT_NAME} -> accountId=default (channel=evol)
+- 多身份: agentId={TARGET_ACCOUNT_ID} -> accountId={TARGET_ACCOUNT_ID} (channel=evol)
 
 身份证(agent.md):
 - 路径: ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md
@@ -610,12 +654,48 @@ bindings:
 
 ## 10. 常见错误排查
 
+### 错误 -1: npm install 卡在 node-llama-cpp postinstall（安装步骤 2 失败）
+**原因**: 克隆了错误的仓库或残留了旧的依赖文件
+**现象**:
+```
+A prebuilt binary was not found, falling back to building from source
+随后被 SIGTERM 终止
+```
+**解决**:
+1. **立即删除并重新克隆**：
+   ```bash
+   rm -rf ~/.openclaw/extensions/evol
+   ```
+2. 重新执行第 2 步的克隆命令
+3. 克隆后**必须执行验证脚本**确认仓库正确
+4. **正确的 package.json 只包含 `acp-ts` 和 `@sinclair/typebox` 两个依赖，不应该有 `node-llama-cpp`**
+
+详细排查步骤见：`~/.openclaw/extensions/evol/troubleshooting/fix-node-llama-cpp-issue.md`
+
+### 错误 -0.5: "AgentCP is not a constructor"（预检步骤 8.2 失败）
+**原因**: 预检脚本从错误的路径导入 AgentCP 类
+**现象**:
+```
+PREFLIGHT_FAIL:default: AgentCP is not a constructor
+```
+**解决**: 使用修复后的预检脚本，确保从 `acp-ts/dist/agentcp.js` 导入而不是 `acp-ts` 主入口。
+
+修复方法：确认预检脚本中的导入语句为：
+```javascript
+const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/evol/node_modules/acp-ts/dist/agentcp.js');
+```
+
+而**不是**：
+```javascript
+const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/evol/node_modules/acp-ts');
+```
+
 ### 错误 0: "当前aid:xxx.agentcp.io创建失败" 或 "被别的用户使用"（最常见）
 **原因**: seedPassword 缺失或不匹配
 **检查**:
 ```bash
 # 检查 seedPassword 是否存在
-node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=cfg.channels?.acp;console.log('seedPassword:',a?.seedPassword||a?.identities?.['{accountId}']?.seedPassword||'MISSING')"
+node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=cfg.channels?.evol;console.log('seedPassword:',a?.seedPassword||a?.identities?.['{accountId}']?.seedPassword||'MISSING')"
 ```
 **解决**:
 - 如果是新安装：确保第 4.3 节生成了 seedPassword 并写入配置
