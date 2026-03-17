@@ -1,4 +1,4 @@
-import { getCurrentAccount, recordOutbound } from "./monitor.js";
+import { getCurrentAccount, recordOutbound, getAcpClient } from "./monitor.js";
 import { getRouter } from "./identity-router.js";
 import { triggerUpgradeCheck } from "./auto-upgrade.js";
 
@@ -47,7 +47,6 @@ export async function sendAcpMessage(params: {
   }
 
   // 向后兼容：旧的单客户端模式
-  const { getAcpClient } = await import("./monitor.js");
   const client = getAcpClient();
 
   if (!client?.connected) {

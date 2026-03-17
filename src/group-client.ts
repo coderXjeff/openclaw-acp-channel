@@ -13,6 +13,7 @@ import type { IdentityAcpState } from "./types.js"; // backward compat alias
 import { DEFAULT_SESSION_CONFIG, DEFAULT_GROUP_SOCIAL_CONFIG } from "./types.js";
 import type { AcpIdentityRouter } from "./identity-router.js";
 import { loadAgentMdSources } from "./agent-md-sources.js";
+import { handleGroupMessagesForIdentity } from "./monitor.js";
 import { parseIdentity } from "./agent-md-builder.js";
 import { getWorkspaceDir } from "./workspace.js";
 import { buildMentionKeywords, checkMention, pruneVitalityWindow, computeVitality, determineReplyType } from "./group-social.js";
@@ -367,7 +368,6 @@ async function dispatchToAgent(
   console.log(`[ACP-Group] [${identityId}] Dispatching ${messages.length} group messages for group=${groupId}`);
 
   try {
-    const { handleGroupMessagesForIdentity } = await import("./monitor.js");
     // 转换为 handleGroupMessagesForIdentity 期望的格式
     const formatted = messages.map(m => ({
       sender: m.sender,

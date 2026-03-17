@@ -3,6 +3,7 @@ import type { ResolvedAcpAccount, AcpChannelConfig } from "./types.js";
 import { acpConfigSchema } from "./config-schema.js";
 import { acpMessageActions } from "./actions.js";
 import { acpGatewayAdapter } from "./gateway.js";
+import { sendAcpMessage, parseTarget } from "./outbound.js";
 import { acpStatusAdapter } from "./status.js";
 import type { AcpProbeResult } from "./status.js";
 
@@ -222,7 +223,6 @@ const acpOutboundAdapter = {
     accountId?: string | null;
   }) => {
     try {
-      const { sendAcpMessage, parseTarget } = await import("./outbound.js");
       const { targetAid, sessionId } = parseTarget(ctx.to);
 
       await sendAcpMessage({
