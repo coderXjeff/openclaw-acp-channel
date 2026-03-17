@@ -261,9 +261,18 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
     "evol": {
       "enabled": true
     }
+  },
+  "installs": {
+    "evol": {
+      "source": "path",
+      "installPath": "~/.openclaw/extensions/evol",
+      "sourcePath": "~/.openclaw/extensions/evol/index.ts"
+    }
   }
 }
 ```
+
+> `plugins.installs` 告知框架该插件是已知的本地安装，防止每次 AI 请求时重复加载插件（避免刷屏问题）。
 
 ### 5.4 写入/校验 bindings（关键）
 
@@ -293,7 +302,7 @@ const agentId='{AGENT_NAME}';
 const accountId='default';
 const exists=cfg.bindings.some(b=>b.agentId===agentId&&b.match?.channel==='evol'&&b.match?.accountId===accountId);
 if(!exists){
-  cfg.bindings.push({agentId,match:{channel:'acp',accountId}});
+  cfg.bindings.push({agentId,match:{channel:'evol',accountId}});
   fs.writeFileSync(cfgPath,JSON.stringify(cfg,null,2));
   console.log('Added binding: agentId='+agentId+', accountId='+accountId);
 }else{
@@ -314,7 +323,7 @@ const agentId='{TARGET_ACCOUNT_ID}';
 const accountId='{TARGET_ACCOUNT_ID}';
 const exists=cfg.bindings.some(b=>b.agentId===agentId&&b.match?.channel==='evol'&&b.match?.accountId===accountId);
 if(!exists){
-  cfg.bindings.push({agentId,match:{channel:'acp',accountId}});
+  cfg.bindings.push({agentId,match:{channel:'evol',accountId}});
   fs.writeFileSync(cfgPath,JSON.stringify(cfg,null,2));
   console.log('Added binding: agentId='+agentId+', accountId='+accountId);
 }else{
@@ -336,8 +345,8 @@ if(!exists){
 node -e "
 const fs=require('fs');
 const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));
-const a=c.(channels?.evol || channels?.acp);
-const p=c.plugins?.entries?.acp;
+const a=c.channels?.evol;
+const p=c.plugins?.entries?.evol;
 const b=Array.isArray(c.bindings)?c.bindings:[];
 const errors=[];
 
@@ -492,7 +501,7 @@ const lsp={getItem(k){return sd[k]??null},setItem(k,v){sd[k]=v;fs.writeFileSync(
 globalThis.window=globalThis.window||{};globalThis.window.localStorage=lsp;globalThis.localStorage=lsp;
 const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/evol/node_modules/acp-ts');
 const cfg=JSON.parse(fs.readFileSync(path.join(os.homedir(),'.openclaw','openclaw.json'),'utf8'));
-const ac=cfg.(channels?.evol || channels?.acp)||{};
+const ac=cfg.channels?.evol||{};
 const accountId='${TARGET_ACCOUNT_ID}';
 const target=ac;
 const agentId=target?.agentName;
@@ -529,7 +538,7 @@ const lsp={getItem(k){return sd[k]??null},setItem(k,v){sd[k]=v;fs.writeFileSync(
 globalThis.window=globalThis.window||{};globalThis.window.localStorage=lsp;globalThis.localStorage=lsp;
 const { AgentCP } = require(os.homedir()+'/.openclaw/extensions/evol/node_modules/acp-ts');
 const cfg=JSON.parse(fs.readFileSync(path.join(os.homedir(),'.openclaw','openclaw.json'),'utf8'));
-const ac=cfg.(channels?.evol || channels?.acp)||{};
+const ac=cfg.channels?.evol||{};
 const accountId='${TARGET_ACCOUNT_ID}';
 const target=ac.identities?.[accountId]||null;
 const agentId=target?.agentId;
@@ -587,8 +596,8 @@ const aid=agentId+'.'+(target.domain||'agentcp.io');
 - ownerAid: {OWNER_AID 或 "未设置"}
 
 bindings:
-- 单身份: agentId={AGENT_NAME} -> accountId=default (channel=acp)
-- 多身份: agentId={TARGET_ACCOUNT_ID} -> accountId={TARGET_ACCOUNT_ID} (channel=acp)
+- 单身份: agentId={AGENT_NAME} -> accountId=default (channel=evol)
+- 多身份: agentId={TARGET_ACCOUNT_ID} -> accountId={TARGET_ACCOUNT_ID} (channel=evol)
 
 身份证(agent.md):
 - 路径: ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md
@@ -615,7 +624,7 @@ bindings:
 **检查**:
 ```bash
 # 检查 seedPassword 是否存在
-node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=cfg.(channels?.evol || channels?.acp);console.log('seedPassword:',a?.seedPassword||a?.identities?.['{accountId}']?.seedPassword||'MISSING')"
+node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));const a=cfg.channels?.evol;console.log('seedPassword:',a?.seedPassword||a?.identities?.['{accountId}']?.seedPassword||'MISSING')"
 ```
 **解决**:
 - 如果是新安装：确保第 4.3 节生成了 seedPassword 并写入配置
