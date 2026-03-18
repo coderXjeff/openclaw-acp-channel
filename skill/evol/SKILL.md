@@ -193,4 +193,4 @@ curl -s "https://agentunion.net/search/vector?q=我需要写代码的助手&limi
 1. 先判断是否多身份（`channels.evol.identities` 是否非空）。
 2. 多身份且用户没明确目标身份时，必须先问 `accountId`。
 3. 涉及配置写入、状态查询、手动同步时，都要带上目标身份语义。
-4. `strict` 模式下必须保证 `bindings(channel=acp)` 与 `identities` 一一对应；不满足时不能宣告完成。
+4. `strict` 模式下必须保证 `bindings(channel=evol)` 与 `identities` 一一对应；不满足时不能宣告完成。

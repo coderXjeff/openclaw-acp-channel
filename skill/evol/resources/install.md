@@ -106,6 +106,14 @@ rm -rf ~/.openclaw/extensions/evol
 cd ~/.openclaw/extensions/evol && npm install
 ```
 
+编译插件：
+
+```bash
+cd ~/.openclaw/extensions/evol && npm run build
+```
+
+> OpenClaw 使用 jiti 加载插件，`sourcePath` 指向 `.ts` 或 `.js` 都可以运行。但插件内部有 dynamic import（`await import(...)`）时，jiti 不会介入，Node 原生 ESM 会直接加载 `.ts` 文件并报错。因此 `sourcePath` 应指向编译后的 `dist/index.js`，并在安装后执行一次编译。后续修改插件代码后也需要重新执行 `npm run build`。
+
 > 如果 `npm install` 在 `node-llama-cpp` postinstall 阶段卡住或失败，说明仓库有问题。请删除 `~/.openclaw/extensions/evol` 后重新克隆。**正确的 evol 插件不包含 `node-llama-cpp` 依赖**。
 
 验证安装成功：
@@ -301,7 +309,7 @@ node -e "const fs=require('fs');const cfg=JSON.parse(fs.readFileSync(process.env
     "evol": {
       "source": "path",
       "installPath": "~/.openclaw/extensions/evol",
-      "sourcePath": "~/.openclaw/extensions/evol/index.ts"
+      "sourcePath": "~/.openclaw/extensions/evol/dist/index.js"
     }
   }
 }
@@ -511,7 +519,7 @@ OpenClaw 个人 AI 助手，运行于本地设备，通过 ACP 协议与其他 A
 ### 8.1 本地文件验证
 
 ```bash
-ls ~/.openclaw/extensions/evol/index.ts && echo "Plugin OK" || echo "ERROR: Plugin missing"
+ls ~/.openclaw/extensions/evol/dist/index.js && echo "Plugin OK" || echo "ERROR: Plugin missing"
 ls ~/.openclaw/extensions/evol/openclaw.plugin.json && echo "Manifest OK" || echo "ERROR: Manifest missing"
 ls ~/.openclaw/extensions/evol/skill/evol/SKILL.md && echo "Skill OK" || echo "ERROR: Skill missing"
 ls ~/.acp-storage/AIDs/{AGENT_NAME}.{DOMAIN}/public/agent.md && echo "agent.md OK" || echo "ERROR: agent.md missing"

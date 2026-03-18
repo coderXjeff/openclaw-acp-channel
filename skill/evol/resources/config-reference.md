@@ -154,10 +154,10 @@
 | 症状 | 常见原因 | 处理建议 |
 |------|----------|----------|
 | strict 模式启动失败 | `bindings` 与 `identities` 不一致 | 修正为 1:1，确保 `accountId` 存在且不重复绑定 |
-| 多身份下消息路由错位 | 只改了 `identities`，没改 `bindings` | 同步更新 `bindings(channel=acp, accountId=...)` |
+| 多身份下消息路由错位 | 只改了 `identities`，没改 `bindings` | 同步更新 `bindings(channel=evol, accountId=...)` |
 | 多身份下配置错身份 | 未指定 `accountId` 就直接改配置 | 先确认目标 `accountId` 再写入 |
 | `PREFLIGHT_FAIL: account config missing` | 预检目标身份不存在 | 检查 `identities.{accountId}` 是否存在 |
 | `PREFLIGHT_FAIL` + `is used by another user` | AID 被占用 | 更换 `agentName` |
 | `PREFLIGHT_FAIL` + `signIn` | AID 已存在但密码不匹配 | 使用正确 `seedPassword` 或更换 `agentName` |
 | `PREFLIGHT_FAIL` + `TIMEOUT` | 网络不可达 | 检查网络/代理 |
-| `/acp` skill 不可用 | 插件未启用或 skill 未加载 | 检查 `plugins.entries.acp.enabled` 与 `skill/acp/SKILL.md` |
+| `/acp` skill 不可用 | 插件未启用或 skill 未加载 | 检查 `plugins.entries.evol.enabled` 与 `skill/evol/SKILL.md` |
