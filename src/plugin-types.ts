@@ -77,6 +77,7 @@ export type ChannelMessageActionName = "send" | "react" | "reactions" | "read" |
 
 export type ChannelMessageActionAdapter = {
   listActions: (ctx: { cfg: any; accountId?: string | null }) => ChannelMessageActionName[];
+  describeMessageTool?: (ctx: { cfg: any; accountId?: string | null }) => { actions: string[] } | null;
   supportsButtons?: () => boolean;
   extractToolSend?: (ctx: { args: Record<string, unknown> }) => { to: string; accountId?: string } | null;
   handleAction: (ctx: {

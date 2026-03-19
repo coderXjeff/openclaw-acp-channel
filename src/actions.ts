@@ -47,6 +47,13 @@ export const acpMessageActions: ChannelMessageActionAdapter = {
     return ["send"];
   },
 
+  describeMessageTool: ({ cfg }) => {
+    if (!isAcpEnabled(cfg)) {
+      return null;
+    }
+    return { actions: ["send"] };
+  },
+
   supportsButtons: () => false,
 
   extractToolSend: ({ args }) => {
